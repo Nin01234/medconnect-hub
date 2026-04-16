@@ -73,7 +73,8 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
 
   const updateStatus = async (status: string, extra: Record<string, unknown> = {}) => {
     setBusy(true);
-    const { error } = await supabase.from("referrals").update({ status, ...extra }).eq("id", ref.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await supabase.from("referrals").update({ status, ...extra } as any).eq("id", ref.id);
     setBusy(false);
     if (error) toast.error(error.message); else { toast.success("Updated"); load(); }
   };
