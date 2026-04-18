@@ -10,6 +10,18 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Upload, X } from "lucide-react";
+import { createReferralSchema } from "@/lib/validation";
+import { sanitizeFileName, sanitizeText } from "@/lib/sanitize";
+import { safeClientError } from "@/lib/safeError";
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
 
 interface Hospital { id: string; name: string; city: string | null; type: string; }
 
@@ -35,39 +47,81 @@ export default function CreateReferral() {
     e.preventDefault();
     if (!profile?.clinic_id) return toast.error("Your account is not linked to a clinic");
     if (!form.hospital_id) return toast.error("Select a preferred hospital");
+    const parsed = createReferralSchema.safeParse({
+      ...form,
+      patient_gender: form.patient_gender || "",
+    });
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? "Check your input.");
+      return;
+    }
+    const v = parsed.data;
+    for (const f of files) {
+      if (f.size > MAX_ATTACHMENT_BYTES) {
+        toast.error(`File too large (max ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB): ${f.name}`);
+        return;
+      }
+      if (f.type && !ALLOWED_ATTACHMENT_TYPES.has(f.type)) {
+        toast.error(`Unsupported file type: ${f.name}. Use PDF or common images.`);
+        return;
+      }
+    }
     setBusy(true);
     try {
-      const { data: ref, error } = await supabase.from("referrals").insert({
-        patient_name: form.patient_name,
-        patient_age: form.patient_age ? Number(form.patient_age) : null,
-        patient_gender: form.patient_gender || null,
-        patient_phone: form.patient_phone || null,
-        diagnosis: form.diagnosis,
-        symptoms: form.symptoms,
-        urgency_level: form.urgency_level,
-        referral_reason: form.referral_reason,
-        notes: form.notes,
-        hospital_id: form.hospital_id,
-        clinic_id: profile.clinic_id,
-        created_by: user!.id,
-        status: "new",
-      }).select("id").single();
+      const patientName = sanitizeText(v.patient_name, 200);
+      const patientPhone = v.patient_phone ? sanitizeText(v.patient_phone, 40) : null;
+      const patientAge = v.patient_age ?? null;
+      const gender =
+        !v.patient_gender || v.patient_gender === ""
+          ? null
+          : v.patient_gender;
+
+      const { data: patientId, error: patientErr } = await supabase.rpc("upsert_patient_for_clinic", {
+        p_clinic_id: profile.clinic_id,
+        p_full_name: patientName,
+        p_age: patientAge,
+        p_gender: gender,
+        p_phone: patientPhone,
+      });
+      if (patientErr) throw patientErr;
+
+      const { data: ref, error } = await supabase
+        .from("referrals")
+        .insert({
+          patient_id: patientId ?? null,
+          patient_name: patientName,
+          patient_age: patientAge,
+          patient_gender: gender,
+          patient_phone: patientPhone,
+          diagnosis: sanitizeText(v.diagnosis, 12000),
+          symptoms: sanitizeText(v.symptoms ?? "", 12000) || null,
+          urgency_level: v.urgency_level,
+          referral_reason: sanitizeText(v.referral_reason, 12000),
+          notes: v.notes ? sanitizeText(v.notes, 12000) : null,
+          hospital_id: v.hospital_id,
+          clinic_id: profile.clinic_id,
+          created_by: user!.id,
+          status: "new",
+        })
+        .select("id")
+        .single();
       if (error) throw error;
 
       // Upload files
       for (const f of files) {
-        const path = `${ref.id}/${Date.now()}-${f.name}`;
+        const safeName = sanitizeFileName(f.name);
+        const path = `${ref.id}/${Date.now()}-${safeName}`;
         const { error: upErr } = await supabase.storage.from("referral-attachments").upload(path, f);
         if (upErr) { console.error(upErr); continue; }
         await supabase.from("referral_attachments").insert({
-          referral_id: ref.id, file_path: path, file_name: f.name, mime_type: f.type, size_bytes: f.size, uploaded_by: user!.id,
+          referral_id: ref.id, file_path: path, file_name: safeName, mime_type: f.type, size_bytes: f.size, uploaded_by: user!.id,
         });
       }
 
       toast.success("Referral submitted");
       nav(`/clinic/referrals/${ref.id}`);
     } catch (err) {
-      toast.error((err as Error).message);
+      toast.error(safeClientError(err));
     } finally { setBusy(false); }
   };
 

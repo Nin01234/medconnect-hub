@@ -11,16 +11,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { ArrowLeft, Printer, Download, Paperclip, Clock } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { sanitizeText } from "@/lib/sanitize";
+import { safeClientError } from "@/lib/safeError";
 
 interface Referral {
-  id: string; referral_number: string | null; patient_name: string; patient_age: number | null; patient_gender: string | null;
+  id: string; unique_id: string | null; referral_number: string | null; patient_name: string; patient_age: number | null; patient_gender: string | null;
   patient_phone: string | null; diagnosis: string | null; symptoms: string | null; urgency_level: string;
   referral_reason: string | null; notes: string | null; status: string; rejection_reason: string | null;
   hospital_feedback: string | null; clinic_id: string | null; hospital_id: string | null; assigned_doctor_id: string | null;
   created_at: string; updated_at: string;
-  clinics: { name: string; city: string | null; contact: string | null; region: string | null } | null;
-  hospitals: { name: string; city: string | null } | null;
-  doctors: { full_name: string; specialty: string | null } | null;
+  clinics: { name: string; unique_id: string | null; city: string | null; contact: string | null; region: string | null } | null;
+  hospitals: { name: string; unique_id: string | null; city: string | null } | null;
+  doctors: { full_name: string; unique_id: string | null; specialty: string | null } | null;
 }
 interface Att { id: string; file_path: string; file_name: string; mime_type: string | null; }
 interface Hist { id: string; from_status: string | null; to_status: string; created_at: string; note: string | null; }
@@ -42,7 +44,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   const load = async () => {
     if (!id) return;
     const { data } = await supabase.from("referrals")
-      .select("*, clinics(name,city,contact,region), hospitals(name,city), doctors(full_name,specialty)")
+      .select("*, clinics(name,unique_id,city,contact,region), hospitals(name,unique_id,city), doctors(full_name,unique_id,specialty)")
       .eq("id", id).maybeSingle();
     setRef(data as unknown as Referral);
     const [{ data: a }, { data: h }] = await Promise.all([
@@ -73,10 +75,36 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
 
   const updateStatus = async (status: string, extra: Record<string, unknown> = {}) => {
     setBusy(true);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await supabase.from("referrals").update({ status, ...extra } as any).eq("id", ref.id);
-    setBusy(false);
-    if (error) toast.error(error.message); else { toast.success("Updated"); load(); }
+    const cleaned: Record<string, unknown> = { status, ...extra };
+    if (typeof cleaned.rejection_reason === "string") {
+      const s = sanitizeText(cleaned.rejection_reason, 12000);
+      if (!s.trim()) {
+        setBusy(false);
+        toast.error("Enter a rejection reason.");
+        return;
+      }
+      cleaned.rejection_reason = s;
+    }
+    if (typeof cleaned.hospital_feedback === "string") {
+      const s = sanitizeText(cleaned.hospital_feedback, 12000);
+      if (!s.trim()) {
+        setBusy(false);
+        toast.error("Enter feedback text.");
+        return;
+      }
+      cleaned.hospital_feedback = s;
+    }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await supabase.from("referrals").update(cleaned as any).eq("id", ref.id);
+      if (error) throw error;
+      toast.success("Updated");
+      load();
+    } catch (e) {
+      toast.error(safeClientError(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const downloadFile = async (att: Att) => {
@@ -99,6 +127,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
             <div>
               <p className="text-xs uppercase tracking-widest text-muted-foreground">Medical Referral</p>
               <h1 className="font-display text-3xl font-bold mt-1">{ref.patient_name}</h1>
+              <p className="font-mono text-xs text-muted-foreground mt-1">Referral ID: {ref.unique_id ?? "—"}</p>
               <p className="font-mono text-sm text-muted-foreground mt-1">{ref.referral_number}</p>
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -107,6 +136,13 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
               <p className="text-xs text-muted-foreground">{new Date(ref.created_at).toLocaleString()}</p>
             </div>
           </div>
+
+          {ref.hospital_feedback && (
+            <div className="mb-6 bg-success/10 border border-success/30 rounded-lg p-4">
+              <p className="text-xs uppercase font-semibold text-success tracking-wider">Hospital feedback</p>
+              <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">{ref.hospital_feedback}</p>
+            </div>
+          )}
 
           {/* Sections */}
           <div className="grid md:grid-cols-2 gap-6">
@@ -117,6 +153,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
               <Row k="Phone" v={ref.patient_phone ?? "—"} />
             </Section>
             <Section title="Clinic Information">
+              <Row k="Clinic ID" v={ref.clinics?.unique_id ?? "—"} />
               <Row k="Clinic" v={ref.clinics?.name ?? "—"} />
               <Row k="City" v={ref.clinics?.city ?? "—"} />
               <Row k="Region" v={ref.clinics?.region ?? "—"} />
@@ -145,12 +182,6 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
             </div>
           )}
 
-          {ref.hospital_feedback && (
-            <div className="mt-6 bg-success/10 border border-success/30 rounded-lg p-4">
-              <p className="text-xs uppercase font-semibold text-success tracking-wider">Hospital Feedback</p>
-              <p className="mt-1 text-sm">{ref.hospital_feedback}</p>
-            </div>
-          )}
           {ref.rejection_reason && (
             <div className="mt-6 bg-destructive/10 border border-destructive/30 rounded-lg p-4">
               <p className="text-xs uppercase font-semibold text-destructive tracking-wider">Rejection Reason</p>
@@ -160,6 +191,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
           {ref.doctors && (
             <div className="mt-6 bg-primary/5 border border-primary/20 rounded-lg p-4">
               <p className="text-xs uppercase font-semibold text-primary tracking-wider">Assigned Doctor</p>
+              <p className="text-xs text-muted-foreground">Doctor ID: {ref.doctors.unique_id ?? "—"}</p>
               <p className="mt-1 font-medium">{ref.doctors.full_name}{ref.doctors.specialty ? ` · ${ref.doctors.specialty}` : ""}</p>
             </div>
           )}

@@ -7,8 +7,17 @@ import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
 import { Link } from "react-router-dom";
 import { FilePlus2, Send, Clock, CheckCircle2, XCircle, Award } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
-interface Row { id: string; referral_number: string | null; patient_name: string; status: string; urgency_level: string; created_at: string; }
+interface Row {
+  id: string;
+  referral_number: string | null;
+  patient_name: string;
+  status: string;
+  urgency_level: string;
+  created_at: string;
+  hospital_feedback: string | null;
+}
 
 export default function ClinicDashboard() {
   const { profile } = useAuth();
@@ -18,7 +27,7 @@ export default function ClinicDashboard() {
   const load = async () => {
     if (!profile?.clinic_id) return;
     const { data } = await supabase.from("referrals")
-      .select("id, referral_number, patient_name, status, urgency_level, created_at")
+      .select("id, referral_number, patient_name, status, urgency_level, created_at, hospital_feedback")
       .eq("clinic_id", profile.clinic_id)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -44,12 +53,14 @@ export default function ClinicDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="font-display text-3xl font-bold">Welcome back</h1>
-          <p className="text-muted-foreground">Here's what's happening with your referrals.</p>
+      <div className="rounded-xl border bg-card p-6 shadow-card">
+        <div className="flex items-end justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="font-display text-3xl font-bold">Clinic Overview</h1>
+            <p className="text-muted-foreground mt-1">Track referral progress, urgency, and outcomes in real time.</p>
+          </div>
+          <Link to="/clinic/referrals/new"><Button variant="hero"><FilePlus2 className="h-4 w-4" /> Create Referral</Button></Link>
         </div>
-        <Link to="/clinic/referrals/new"><Button variant="hero"><FilePlus2 className="h-4 w-4" /> Create Referral</Button></Link>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -74,7 +85,14 @@ export default function ClinicDashboard() {
                   <div className="col-span-12 md:col-span-3 font-mono text-xs text-muted-foreground">{r.referral_number}</div>
                   <div className="col-span-6 md:col-span-4 font-medium">{r.patient_name}</div>
                   <div className="col-span-3 md:col-span-2"><UrgencyBadge level={r.urgency_level} /></div>
-                  <div className="col-span-3 md:col-span-2"><StatusBadge status={r.status} /></div>
+                  <div className="col-span-3 md:col-span-2 flex flex-wrap items-center gap-2 justify-end md:justify-start">
+                    <StatusBadge status={r.status} />
+                    {r.hospital_feedback?.trim() ? (
+                      <Badge className="border-emerald-500/40 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 font-normal text-[10px] px-2 py-0">
+                        Hospital feedback
+                      </Badge>
+                    ) : null}
+                  </div>
                   <div className="hidden md:block md:col-span-1 text-xs text-muted-foreground text-right">{new Date(r.created_at).toLocaleDateString()}</div>
                 </Link>
               ))}

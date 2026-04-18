@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
 import { Link } from "react-router-dom";
 import { Inbox, Flame, CheckCircle2, XCircle, ClipboardList, Award } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface Row { id: string; referral_number: string | null; patient_name: string; status: string; urgency_level: string; created_at: string; clinics: { name: string } | null; }
 
@@ -44,9 +45,17 @@ export default function HospitalDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-3xl font-bold">Hospital Overview</h1>
-        <p className="text-muted-foreground">Live snapshot of incoming referrals.</p>
+      <div className="rounded-xl border bg-card p-6 shadow-card">
+        <div className="flex items-end justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="font-display text-3xl font-bold">Hospital Overview</h1>
+            <p className="text-muted-foreground mt-1">Review incoming referrals, prioritize critical cases, and monitor outcomes.</p>
+          </div>
+          <div className="flex gap-2">
+            <Link to="/hospital/inbox"><Button variant="outlineBrand">Open Inbox</Button></Link>
+            <Link to="/hospital/assigned"><Button variant="outline">Assigned cases</Button></Link>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

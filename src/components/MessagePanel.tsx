@@ -5,6 +5,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send } from "lucide-react";
+import { referralMessageSchema } from "@/lib/validation";
+import { sanitizeText } from "@/lib/sanitize";
+import { toast } from "sonner";
+import { safeClientError } from "@/lib/safeError";
 
 interface Msg { id: string; sender_id: string | null; message: string; created_at: string; }
 
@@ -28,9 +32,19 @@ export function MessagePanel({ referralId }: { referralId: string }) {
 
   const send = async () => {
     if (!text.trim() || !user) return;
-    const t = text;
+    const parsed = referralMessageSchema.safeParse({ message: text });
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? "Invalid message.");
+      return;
+    }
+    const t = sanitizeText(parsed.data.message, 8000);
     setText("");
-    await supabase.from("referral_messages").insert({ referral_id: referralId, sender_id: user.id, message: t });
+    try {
+      const { error } = await supabase.from("referral_messages").insert({ referral_id: referralId, sender_id: user.id, message: t });
+      if (error) throw error;
+    } catch (e) {
+      toast.error(safeClientError(e));
+    }
   };
 
   return (

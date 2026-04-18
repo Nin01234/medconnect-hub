@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { LayoutDashboard, Inbox, ClipboardList, MessageSquare, LogOut, Activity, Users, Menu, MessageCircleHeart } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
+import { PortalSearch } from "@/components/PortalSearch";
 
 const links = [
   { to: "/hospital", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -32,12 +34,13 @@ export default function HospitalLayout() {
                 <Activity className="h-4 w-4 text-primary-foreground" />
               </div>
               <div>
-                <p className="font-display text-base font-semibold leading-none">MedReferral</p>
+                <p className="font-display text-base font-semibold leading-none">{BRAND.appShort}</p>
                 <p className="text-[10px] uppercase tracking-widest text-accent">Hospital Portal</p>
               </div>
             </Link>
           </div>
           <div className="flex items-center gap-3">
+            <PortalSearch variant="hospital" />
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium leading-tight">{profile?.full_name ?? "—"}</p>
               <p className="text-xs text-muted-foreground leading-tight">{roles.includes("hospital_admin") ? "Hospital Admin" : "Hospital Staff"}</p>

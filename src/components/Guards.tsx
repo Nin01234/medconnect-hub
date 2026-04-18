@@ -3,16 +3,18 @@ import { useAuth, hasRole, type AppRole } from "@/context/AuthContext";
 import { ReactNode } from "react";
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, profile, roles } = useAuth();
   if (loading) return <FullPageLoader />;
   if (!user) return <Navigate to="/auth" replace />;
+  if (!hasRole(roles, "admin") && profile?.status !== "active") return <Navigate to="/portal" replace />;
   return <>{children}</>;
 }
 
 export function RequireRole({ roles: allowed, children }: { roles: AppRole[]; children: ReactNode }) {
-  const { user, roles, loading } = useAuth();
+  const { user, roles, loading, profile } = useAuth();
   if (loading) return <FullPageLoader />;
   if (!user) return <Navigate to="/auth" replace />;
+  if (!hasRole(roles, "admin") && profile?.status !== "active") return <Navigate to="/portal" replace />;
   if (!hasRole(roles, ...allowed)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }

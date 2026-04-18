@@ -6,8 +6,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
+import { Badge } from "@/components/ui/badge";
 
-interface Row { id: string; referral_number: string | null; patient_name: string; status: string; urgency_level: string; created_at: string; hospitals: { name: string } | null; }
+interface Row {
+  id: string;
+  referral_number: string | null;
+  patient_name: string;
+  status: string;
+  urgency_level: string;
+  created_at: string;
+  hospital_feedback: string | null;
+  hospitals: { name: string } | null;
+}
 
 export default function MyReferrals() {
   const { profile } = useAuth();
@@ -18,15 +28,20 @@ export default function MyReferrals() {
   useEffect(() => {
     if (!profile?.clinic_id) return;
     supabase.from("referrals")
-      .select("id, referral_number, patient_name, status, urgency_level, created_at, hospitals(name)")
+      .select("id, referral_number, patient_name, status, urgency_level, created_at, hospital_feedback, hospitals(name)")
       .eq("clinic_id", profile.clinic_id)
       .order("created_at", { ascending: false })
       .then(({ data }) => setRows((data ?? []) as unknown as Row[]));
   }, [profile?.clinic_id]);
 
+  const normalizedQuery = q.trim().toLowerCase();
   const filtered = rows.filter(r =>
     (status === "all" || r.status === status) &&
-    (q === "" || r.patient_name.toLowerCase().includes(q.toLowerCase()) || r.referral_number?.toLowerCase().includes(q.toLowerCase()))
+    (
+      normalizedQuery === "" ||
+      r.patient_name.toLowerCase().includes(normalizedQuery) ||
+      r.referral_number?.toLowerCase().includes(normalizedQuery)
+    )
   );
 
   return (
@@ -55,6 +70,7 @@ export default function MyReferrals() {
                 <th className="text-left px-5 py-3">Hospital</th>
                 <th className="text-left px-5 py-3">Urgency</th>
                 <th className="text-left px-5 py-3">Status</th>
+                <th className="text-left px-5 py-3">Feedback</th>
                 <th className="text-left px-5 py-3">Created</th>
               </tr>
             </thead>
@@ -66,10 +82,19 @@ export default function MyReferrals() {
                   <td className="px-5 py-3">{r.hospitals?.name ?? "—"}</td>
                   <td className="px-5 py-3"><UrgencyBadge level={r.urgency_level} /></td>
                   <td className="px-5 py-3"><StatusBadge status={r.status} /></td>
+                  <td className="px-5 py-3">
+                    {r.hospital_feedback?.trim() ? (
+                      <Badge className="border-emerald-500/40 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 font-normal whitespace-nowrap">
+                        Feedback
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-muted-foreground text-xs">{new Date(r.created_at).toLocaleString()}</td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={6} className="text-center py-10 text-muted-foreground">No referrals match.</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-muted-foreground">No referrals match.</td></tr>}
             </tbody>
           </table>
         </CardContent>

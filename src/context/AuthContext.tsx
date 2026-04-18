@@ -6,12 +6,17 @@ type AppRole = "admin" | "hospital_admin" | "hospital_staff" | "clinic_user" | "
 
 interface Profile {
   id: string;
+  unique_id: string | null;
   full_name: string | null;
   email: string | null;
   phone: string | null;
+  role: AppRole | null;
   status: string;
   clinic_id: string | null;
   hospital_id: string | null;
+  clinics?: { name: string; region: string | null; city: string | null } | null;
+  hospitals?: { name: string; region: string | null; city: string | null } | null;
+  user_roles?: { role: AppRole }[];
 }
 
 interface AuthCtx {
@@ -35,11 +40,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadProfile = async (uid: string) => {
     const [{ data: p }, { data: r }] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("*, clinics(name,region,city), hospitals(name,region,city)")
+        .eq("id", uid)
+        .maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", uid),
     ]);
-    setProfile(p as Profile | null);
-    setRoles((r ?? []).map((x: { role: AppRole }) => x.role));
+    const rolesList = (r ?? []).map((x) => x.role as AppRole);
+    if (!p) {
+      setProfile(null);
+      setRoles(rolesList);
+      return;
+    }
+    const userRoles = (r ?? []).map((x) => ({ role: x.role as AppRole }));
+    setProfile({
+      id: p.id,
+      unique_id: p.unique_id,
+      full_name: p.full_name,
+      email: p.email,
+      phone: p.phone,
+      role: rolesList[0] ?? null,
+      status: p.status,
+      clinic_id: p.clinic_id,
+      hospital_id: p.hospital_id,
+      clinics: p.clinics,
+      hospitals: p.hospitals,
+      user_roles: userRoles,
+    });
+    setRoles(rolesList);
   };
 
   useEffect(() => {

@@ -31,10 +31,16 @@ export default function HospitalInbox() {
     return () => { supabase.removeChannel(ch); };
   }, [profile?.hospital_id]);
 
+  const normalizedQuery = q.trim().toLowerCase();
   const filtered = rows.filter(r =>
     (status === "all" || r.status === status) &&
     (urgency === "all" || r.urgency_level === urgency) &&
-    (q === "" || r.patient_name.toLowerCase().includes(q.toLowerCase()) || r.referral_number?.toLowerCase().includes(q.toLowerCase()) || r.clinics?.name.toLowerCase().includes(q.toLowerCase()))
+    (
+      normalizedQuery === "" ||
+      r.patient_name.toLowerCase().includes(normalizedQuery) ||
+      r.referral_number?.toLowerCase().includes(normalizedQuery) ||
+      r.clinics?.name?.toLowerCase().includes(normalizedQuery)
+    )
   );
 
   return (

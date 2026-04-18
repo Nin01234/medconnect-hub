@@ -1,13 +1,16 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Users, Building2, Hospital, ShieldCheck, ScrollText, LogOut, Crown, Menu } from "lucide-react";
+import { LayoutDashboard, Users, Building2, Hospital, ShieldCheck, ScrollText, LogOut, Crown, Menu, UserCheck } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
+import { PortalSearch } from "@/components/PortalSearch";
 
 const links = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/users", label: "Users", icon: Users },
+  { to: "/admin/approvals", label: "Pending Approvals", icon: UserCheck },
   { to: "/admin/clinics", label: "Clinics", icon: Building2 },
   { to: "/admin/hospitals", label: "Hospitals", icon: Hospital },
   { to: "/admin/roles", label: "Roles", icon: ShieldCheck },
@@ -27,10 +30,13 @@ export default function AdminLayout() {
             <Crown className="h-5 w-5 text-accent-foreground" />
           </div>
           <div>
-            <p className="font-display text-lg font-semibold leading-none">MedReferral</p>
+            <p className="font-display text-lg font-semibold leading-none">{BRAND.appShort}</p>
             <p className="text-[10px] uppercase tracking-widest text-sidebar-primary">Admin</p>
           </div>
         </Link>
+        <div className="mb-3 px-0">
+          <PortalSearch variant="admin" />
+        </div>
         <nav className="space-y-1 flex-1">
           {links.map((l) => (
             <NavLink key={l.to} to={l.to} end={l.end} onClick={() => setOpen(false)}
@@ -50,9 +56,10 @@ export default function AdminLayout() {
       </aside>
 
       <div className="flex-1 lg:ml-0 flex flex-col min-w-0">
-        <header className="lg:hidden bg-card border-b h-14 flex items-center px-4 sticky top-0 z-20">
-          <button onClick={() => setOpen(!open)}><Menu className="h-5 w-5" /></button>
-          <p className="ml-3 font-display font-semibold">Admin</p>
+        <header className="lg:hidden bg-card border-b h-14 flex items-center px-4 sticky top-0 z-20 gap-2">
+          <button type="button" onClick={() => setOpen(!open)} aria-label="Open menu"><Menu className="h-5 w-5" /></button>
+          <p className="ml-1 font-display font-semibold flex-1">Admin</p>
+          <PortalSearch variant="admin" compact />
         </header>
         <main className="flex-1 p-4 lg:p-8">
           <Outlet />

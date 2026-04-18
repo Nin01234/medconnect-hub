@@ -9,8 +9,14 @@ lerna-debug.log*
 
 node_modules
 dist
+supabase/.temp
 dist-ssr
 *.local
+
+# Secrets — never commit (use .env.example for keys list)
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*

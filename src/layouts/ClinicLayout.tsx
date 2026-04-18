@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/button";
 import { LayoutDashboard, FilePlus2, ListChecks, MessageSquare, LogOut, Stethoscope, Menu } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
+import { PortalSearch } from "@/components/PortalSearch";
 
 const links = [
   { to: "/clinic", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/clinic/referrals/new", label: "Create Referral", icon: FilePlus2 },
   { to: "/clinic/referrals", label: "My Referrals", icon: ListChecks },
-  { to: "/clinic/messages", label: "Messages", icon: MessageSquare },
+  { to: "/clinic/messages", label: "Messages & feedback", icon: MessageSquare },
 ];
 
 export default function ClinicLayout() {
@@ -29,12 +31,13 @@ export default function ClinicLayout() {
                 <Stethoscope className="h-5 w-5 text-primary-foreground" />
               </div>
               <div>
-                <p className="font-display text-lg font-semibold leading-none">MedReferral</p>
+                <p className="font-display text-lg font-semibold leading-none">{BRAND.appShort}</p>
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Clinic Portal</p>
               </div>
             </Link>
           </div>
           <div className="flex items-center gap-3">
+            <PortalSearch variant="clinic" />
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium leading-tight">{profile?.full_name ?? "—"}</p>
               <p className="text-xs text-muted-foreground leading-tight">Clinic user</p>

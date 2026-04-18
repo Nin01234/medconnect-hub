@@ -57,6 +57,7 @@ export type Database = {
           ownership_type: Database["public"]["Enums"]["ownership_type"] | null
           region: string | null
           type: Database["public"]["Enums"]["clinic_type"]
+          unique_id: string | null
           updated_at: string
         }
         Insert: {
@@ -71,6 +72,7 @@ export type Database = {
           ownership_type?: Database["public"]["Enums"]["ownership_type"] | null
           region?: string | null
           type?: Database["public"]["Enums"]["clinic_type"]
+          unique_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -85,6 +87,7 @@ export type Database = {
           ownership_type?: Database["public"]["Enums"]["ownership_type"] | null
           region?: string | null
           type?: Database["public"]["Enums"]["clinic_type"]
+          unique_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -99,6 +102,7 @@ export type Database = {
           phone: string | null
           specialty: string | null
           status: string
+          unique_id: string | null
           updated_at: string
           user_id: string | null
         }
@@ -111,6 +115,7 @@ export type Database = {
           phone?: string | null
           specialty?: string | null
           status?: string
+          unique_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -123,6 +128,7 @@ export type Database = {
           phone?: string | null
           specialty?: string | null
           status?: string
+          unique_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -149,6 +155,7 @@ export type Database = {
           name: string
           region: string | null
           type: Database["public"]["Enums"]["hospital_type"]
+          unique_id: string | null
           updated_at: string
         }
         Insert: {
@@ -163,6 +170,7 @@ export type Database = {
           name: string
           region?: string | null
           type?: Database["public"]["Enums"]["hospital_type"]
+          unique_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -177,6 +185,7 @@ export type Database = {
           name?: string
           region?: string | null
           type?: Database["public"]["Enums"]["hospital_type"]
+          unique_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -191,6 +200,7 @@ export type Database = {
           id: string
           phone: string | null
           status: string
+          unique_id: string | null
           updated_at: string
         }
         Insert: {
@@ -202,6 +212,7 @@ export type Database = {
           id: string
           phone?: string | null
           status?: string
+          unique_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -213,6 +224,7 @@ export type Database = {
           id?: string
           phone?: string | null
           status?: string
+          unique_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -356,6 +368,7 @@ export type Database = {
           notes: string | null
           patient_age: number | null
           patient_gender: Database["public"]["Enums"]["gender_type"] | null
+          patient_id: string | null
           patient_name: string
           patient_phone: string | null
           referral_number: string | null
@@ -363,6 +376,7 @@ export type Database = {
           rejection_reason: string | null
           status: Database["public"]["Enums"]["referral_status"]
           symptoms: string | null
+          unique_id: string | null
           updated_at: string
           urgency_level: Database["public"]["Enums"]["urgency_level"]
         }
@@ -378,6 +392,7 @@ export type Database = {
           notes?: string | null
           patient_age?: number | null
           patient_gender?: Database["public"]["Enums"]["gender_type"] | null
+          patient_id?: string | null
           patient_name: string
           patient_phone?: string | null
           referral_number?: string | null
@@ -385,6 +400,7 @@ export type Database = {
           rejection_reason?: string | null
           status?: Database["public"]["Enums"]["referral_status"]
           symptoms?: string | null
+          unique_id?: string | null
           updated_at?: string
           urgency_level?: Database["public"]["Enums"]["urgency_level"]
         }
@@ -400,6 +416,7 @@ export type Database = {
           notes?: string | null
           patient_age?: number | null
           patient_gender?: Database["public"]["Enums"]["gender_type"] | null
+          patient_id?: string | null
           patient_name?: string
           patient_phone?: string | null
           referral_number?: string | null
@@ -407,6 +424,7 @@ export type Database = {
           rejection_reason?: string | null
           status?: Database["public"]["Enums"]["referral_status"]
           symptoms?: string | null
+          unique_id?: string | null
           updated_at?: string
           urgency_level?: Database["public"]["Enums"]["urgency_level"]
         }
@@ -453,7 +471,15 @@ export type Database = {
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -468,6 +494,16 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      upsert_patient_for_clinic: {
+        Args: {
+          p_clinic_id: string
+          p_full_name: string
+          p_age?: number | null
+          p_gender?: Database["public"]["Enums"]["gender_type"] | null
+          p_phone?: string | null
+        }
+        Returns: string
       }
     }
     Enums: {

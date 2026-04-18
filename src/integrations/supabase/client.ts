@@ -5,6 +5,17 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+function assertEnv(): void {
+  if (typeof SUPABASE_URL !== "string" || !SUPABASE_URL.startsWith("https://")) {
+    throw new Error("Missing or invalid VITE_SUPABASE_URL. Set it in your environment (see .env.example).");
+  }
+  if (typeof SUPABASE_PUBLISHABLE_KEY !== "string" || SUPABASE_PUBLISHABLE_KEY.length < 20) {
+    throw new Error("Missing or invalid VITE_SUPABASE_PUBLISHABLE_KEY. Set it in your environment (see .env.example).");
+  }
+}
+
+assertEnv();
+
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 

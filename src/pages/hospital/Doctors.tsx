@@ -5,11 +5,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { doctorCreateSchema } from "@/lib/validation";
+import { sanitizeText } from "@/lib/sanitize";
+import { safeClientError } from "@/lib/safeError";
 
-interface Doctor { id: string; full_name: string; specialty: string | null; phone: string | null; email: string | null; status: string; }
+interface Doctor { id: string; unique_id: string | null; full_name: string; specialty: string | null; phone: string | null; email: string | null; status: string; }
 
 export default function Doctors() {
   const { profile, roles } = useAuth();
@@ -33,11 +36,27 @@ export default function Doctors() {
 
   const create = async () => {
     if (!profile?.hospital_id) return;
-    const { error } = await supabase.from("doctors").insert({ ...form, hospital_id: profile.hospital_id });
-    if (error) return toast.error(error.message);
-    toast.success("Doctor added");
-    setForm({ full_name: "", specialty: "", phone: "", email: "" });
-    setOpen(false); load();
+    const parsed = doctorCreateSchema.safeParse(form);
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? "Check your input.");
+      return;
+    }
+    const d = parsed.data;
+    try {
+      const { error } = await supabase.from("doctors").insert({
+        full_name: sanitizeText(d.full_name, 200),
+        specialty: d.specialty ? sanitizeText(d.specialty, 200) : null,
+        phone: d.phone ? sanitizeText(d.phone, 40) : null,
+        email: d.email ? sanitizeText(d.email, 320) : null,
+        hospital_id: profile.hospital_id,
+      });
+      if (error) throw error;
+      toast.success("Doctor added");
+      setForm({ full_name: "", specialty: "", phone: "", email: "" });
+      setOpen(false); load();
+    } catch (e) {
+      toast.error(safeClientError(e));
+    }
   };
 
   return (
@@ -51,7 +70,10 @@ export default function Doctors() {
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild><Button variant="hero"><Plus className="h-4 w-4" /> Add doctor</Button></DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>New doctor</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>New doctor</DialogTitle>
+                <DialogDescription>Add a doctor to the hospital roster.</DialogDescription>
+              </DialogHeader>
               <div className="space-y-3">
                 <div><Label>Full name</Label><Input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} /></div>
                 <div><Label>Specialty</Label><Input value={form.specialty} onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))} /></div>
@@ -70,6 +92,7 @@ export default function Doctors() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="font-display text-lg font-semibold">{d.full_name}</p>
+                  <p className="font-mono text-xs text-muted-foreground">Doctor ID: {d.unique_id ?? "—"}</p>
                   <p className="text-sm text-muted-foreground">{d.specialty ?? "General"}</p>
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{counts[d.id] ?? 0} active</span>
