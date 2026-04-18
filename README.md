@@ -37,6 +37,10 @@ Required variables:
 4. **Supabase auth**: In Supabase → Authentication → URL configuration, add your Vercel URL (and preview URLs if needed) to **Site URL** and **Redirect URLs**.
 5. Deploy. Client-side routing is handled via `vercel.json` rewrites to `index.html`.
 
+**This repo’s production URL (Vercel):** [https://medconnect-hub-sigma.vercel.app](https://medconnect-hub-sigma.vercel.app)
+
+Environment variables are configured for **Production** and **Development** on Vercel. If you use **Preview** deployments (pull requests), add the same three `VITE_*` variables for your preview branch in the Vercel dashboard (Project → Settings → Environment Variables) — the CLI may require a branch name for Preview.
+
 ---
 
 ## Migrating to your own Supabase project
