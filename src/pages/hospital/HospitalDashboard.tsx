@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { StatCard } from "@/components/StatCard";
@@ -14,23 +14,25 @@ export default function HospitalDashboard() {
   const { profile } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
 
-  const load = async () => {
-    if (!profile?.hospital_id) return;
+  const hospitalId = profile?.hospital_id ?? null;
+
+  const load = useCallback(async () => {
+    if (!hospitalId) return;
     const { data } = await supabase.from("referrals")
       .select("id, referral_number, patient_name, status, urgency_level, created_at, clinics(name)")
-      .eq("hospital_id", profile.hospital_id)
+      .eq("hospital_id", hospitalId)
       .order("created_at", { ascending: false }).limit(100);
     setRows((data ?? []) as unknown as Row[]);
-  };
+  }, [hospitalId]);
 
   useEffect(() => {
     load();
-    if (!profile?.hospital_id) return;
+    if (!hospitalId) return;
     const ch = supabase.channel("hosp-refs")
-      .on("postgres_changes", { event: "*", schema: "public", table: "referrals", filter: `hospital_id=eq.${profile.hospital_id}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "referrals", filter: `hospital_id=eq.${hospitalId}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [profile?.hospital_id]);
+  }, [hospitalId, load]);
 
   const c = {
     new: rows.filter(r => r.status === "new").length,

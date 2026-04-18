@@ -14,7 +14,7 @@ export function ThemeToggle() {
           type="button"
           size="icon"
           variant="outline"
-          className="fixed bottom-4 right-4 z-50 rounded-full shadow-card"
+          className="fixed bottom-4 right-4 z-50 rounded-full shadow-card no-print"
           aria-label="Change theme"
           title="Change theme"
         >

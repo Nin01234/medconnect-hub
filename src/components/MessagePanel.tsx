@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,10 +17,10 @@ export function MessagePanel({ referralId }: { referralId: string }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const { data } = await supabase.from("referral_messages").select("*").eq("referral_id", referralId).order("created_at");
     setMsgs((data ?? []) as Msg[]);
-  };
+  }, [referralId]);
 
   useEffect(() => {
     load();
@@ -28,7 +28,7 @@ export function MessagePanel({ referralId }: { referralId: string }) {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "referral_messages", filter: `referral_id=eq.${referralId}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [referralId]);
+  }, [referralId, load]);
 
   const send = async () => {
     if (!text.trim() || !user) return;

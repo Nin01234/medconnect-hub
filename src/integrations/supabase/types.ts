@@ -376,6 +376,11 @@ export type Database = {
           rejection_reason: string | null
           status: Database["public"]["Enums"]["referral_status"]
           symptoms: string | null
+          vitals_bp: string | null
+          vitals_hr: string | null
+          vitals_rr: string | null
+          vitals_spo2: string | null
+          vitals_temp: string | null
           unique_id: string | null
           updated_at: string
           urgency_level: Database["public"]["Enums"]["urgency_level"]
@@ -400,6 +405,11 @@ export type Database = {
           rejection_reason?: string | null
           status?: Database["public"]["Enums"]["referral_status"]
           symptoms?: string | null
+          vitals_bp?: string | null
+          vitals_hr?: string | null
+          vitals_rr?: string | null
+          vitals_spo2?: string | null
+          vitals_temp?: string | null
           unique_id?: string | null
           updated_at?: string
           urgency_level?: Database["public"]["Enums"]["urgency_level"]
@@ -424,6 +434,11 @@ export type Database = {
           rejection_reason?: string | null
           status?: Database["public"]["Enums"]["referral_status"]
           symptoms?: string | null
+          vitals_bp?: string | null
+          vitals_hr?: string | null
+          vitals_rr?: string | null
+          vitals_spo2?: string | null
+          vitals_temp?: string | null
           unique_id?: string | null
           updated_at?: string
           urgency_level?: Database["public"]["Enums"]["urgency_level"]

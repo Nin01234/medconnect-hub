@@ -30,10 +30,12 @@ export default function CreateReferral() {
   const nav = useNavigate();
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     patient_name: "", patient_age: "", patient_gender: "" as "" | "male" | "female" | "other", patient_phone: "",
     diagnosis: "", symptoms: "", urgency_level: "medium" as "low" | "medium" | "high" | "critical",
+    vitals_bp: "", vitals_hr: "", vitals_temp: "", vitals_rr: "", vitals_spo2: "",
     referral_reason: "", hospital_id: "", notes: "",
   });
 
@@ -45,6 +47,7 @@ export default function CreateReferral() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUploadErrors([]);
     if (!profile?.clinic_id) return toast.error("Your account is not linked to a clinic");
     if (!form.hospital_id) return toast.error("Select a preferred hospital");
     const parsed = createReferralSchema.safeParse({
@@ -95,6 +98,11 @@ export default function CreateReferral() {
           patient_phone: patientPhone,
           diagnosis: sanitizeText(v.diagnosis, 12000),
           symptoms: sanitizeText(v.symptoms ?? "", 12000) || null,
+          vitals_bp: sanitizeText(v.vitals_bp ?? "", 50) || null,
+          vitals_hr: sanitizeText(v.vitals_hr ?? "", 50) || null,
+          vitals_temp: sanitizeText(v.vitals_temp ?? "", 50) || null,
+          vitals_rr: sanitizeText(v.vitals_rr ?? "", 50) || null,
+          vitals_spo2: sanitizeText(v.vitals_spo2 ?? "", 50) || null,
           urgency_level: v.urgency_level,
           referral_reason: sanitizeText(v.referral_reason, 12000),
           notes: v.notes ? sanitizeText(v.notes, 12000) : null,
@@ -108,17 +116,33 @@ export default function CreateReferral() {
       if (error) throw error;
 
       // Upload files
+      const uploadFailures: string[] = [];
       for (const f of files) {
         const safeName = sanitizeFileName(f.name);
         const path = `${ref.id}/${Date.now()}-${safeName}`;
         const { error: upErr } = await supabase.storage.from("referral-attachments").upload(path, f);
-        if (upErr) { console.error(upErr); continue; }
-        await supabase.from("referral_attachments").insert({
+        if (upErr) {
+          console.error(upErr);
+          uploadFailures.push(`${f.name}: upload failed`);
+          continue;
+        }
+        const { error: insertAttErr } = await supabase.from("referral_attachments").insert({
           referral_id: ref.id, file_path: path, file_name: safeName, mime_type: f.type, size_bytes: f.size, uploaded_by: user!.id,
         });
+        if (insertAttErr) {
+          console.error(insertAttErr);
+          uploadFailures.push(`${f.name}: metadata save failed`);
+        }
       }
 
-      toast.success("Referral submitted");
+      setUploadErrors(uploadFailures);
+      if (uploadFailures.length > 0) {
+        toast.warning(
+          `Referral submitted, but ${uploadFailures.length} attachment${uploadFailures.length > 1 ? "s" : ""} failed.`,
+        );
+      } else {
+        toast.success("Referral submitted");
+      }
       nav(`/clinic/referrals/${ref.id}`);
     } catch (err) {
       toast.error(safeClientError(err));
@@ -154,6 +178,13 @@ export default function CreateReferral() {
         <Section title="Clinical Information">
           <Field label="Diagnosis *"><Textarea required rows={2} value={form.diagnosis} onChange={e => update("diagnosis", e.target.value)} /></Field>
           <Field label="Symptoms"><Textarea rows={3} value={form.symptoms} onChange={e => update("symptoms", e.target.value)} /></Field>
+          <div className="grid md:grid-cols-2 gap-4">
+            <Field label="Blood Pressure (mmHg)"><Input placeholder="e.g. 120/80" value={form.vitals_bp} onChange={e => update("vitals_bp", e.target.value)} /></Field>
+            <Field label="Heart Rate (bpm)"><Input placeholder="e.g. 88" value={form.vitals_hr} onChange={e => update("vitals_hr", e.target.value)} /></Field>
+            <Field label="Temperature (°C)"><Input placeholder="e.g. 37.2" value={form.vitals_temp} onChange={e => update("vitals_temp", e.target.value)} /></Field>
+            <Field label="Respiratory Rate (/min)"><Input placeholder="e.g. 20" value={form.vitals_rr} onChange={e => update("vitals_rr", e.target.value)} /></Field>
+            <Field label="SpO2 (%)"><Input placeholder="e.g. 98" value={form.vitals_spo2} onChange={e => update("vitals_spo2", e.target.value)} /></Field>
+          </div>
           <Field label="Referral Reason *"><Textarea required rows={2} value={form.referral_reason} onChange={e => update("referral_reason", e.target.value)} /></Field>
         </Section>
 
@@ -185,7 +216,7 @@ export default function CreateReferral() {
           <Field label="Notes"><Textarea rows={3} value={form.notes} onChange={e => update("notes", e.target.value)} /></Field>
           <Field label="Attachments">
             <label className="flex items-center justify-center border-2 border-dashed rounded-lg p-6 cursor-pointer hover:border-primary transition-colors">
-              <input type="file" multiple className="hidden" onChange={e => setFiles(Array.from(e.target.files ?? []))} />
+              <input type="file" multiple className="hidden" onChange={e => { setFiles(Array.from(e.target.files ?? [])); setUploadErrors([]); }} />
               <div className="text-center"><Upload className="h-6 w-6 mx-auto text-muted-foreground" /><p className="text-sm mt-2">Click to choose files</p></div>
             </label>
             {files.length > 0 && (
@@ -197,6 +228,16 @@ export default function CreateReferral() {
                   </li>
                 ))}
               </ul>
+            )}
+            {uploadErrors.length > 0 && (
+              <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3">
+                <p className="text-sm font-medium text-destructive">Attachment errors</p>
+                <ul className="mt-1 space-y-1 text-sm text-destructive">
+                  {uploadErrors.map((msg, idx) => (
+                    <li key={`${msg}-${idx}`}>{msg}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </Field>
         </Section>

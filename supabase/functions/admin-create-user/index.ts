@@ -6,6 +6,8 @@ const corsHeaders = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ALLOWED_ROLES = new Set(["clinic_user", "hospital_admin", "hospital_staff", "admin"]);
+const ALLOWED_STATUS = new Set(["pending_approval", "active", "rejected", "suspended"]);
 
 function cap(s: string, max: number): string {
   return s.replace(/\0/g, '').trim().slice(0, max);
@@ -27,6 +29,10 @@ interface Payload {
   new_clinic?: { name: string; type?: string; region?: string; city?: string; address?: string; gps_code?: string; contact?: string; email?: string; ownership_type?: string };
   hospital_id?: string | null;
   new_hospital?: { name: string; type?: string; region?: string; city?: string; address?: string; gps_code?: string; contact?: string; email?: string; departments?: string[] };
+}
+
+function fail(message: string, status = 400): Response {
+  return json({ error: message }, status);
 }
 
 Deno.serve(async (req) => {
@@ -54,14 +60,16 @@ Deno.serve(async (req) => {
 
     const body = (await req.json()) as Payload;
     if (!body.email || !body.password || !body.full_name || !body.role) {
-      return json({ error: 'Missing required fields' }, 400);
+      return fail('Missing required fields');
     }
+    if (!ALLOWED_ROLES.has(body.role)) return fail("Invalid role");
+    if (body.status && !ALLOWED_STATUS.has(body.status)) return fail("Invalid status");
     body.email = cap(body.email.toLowerCase(), 320);
     body.full_name = cap(body.full_name, 200);
     body.password = body.password.length > 128 ? body.password.slice(0, 128) : body.password;
     if (body.phone) body.phone = cap(body.phone, 40);
-    if (!isEmail(body.email)) return json({ error: 'Invalid email' }, 400);
-    if (body.password.length < 6) return json({ error: 'Password too short' }, 400);
+    if (!isEmail(body.email)) return fail('Invalid email');
+    if (body.password.length < 6) return fail('Password too short');
     if (body.new_clinic) {
       body.new_clinic.name = cap(body.new_clinic.name, 200);
       if (body.new_clinic.type) body.new_clinic.type = cap(body.new_clinic.type, 120);
@@ -70,7 +78,7 @@ Deno.serve(async (req) => {
       if (body.new_clinic.address) body.new_clinic.address = cap(body.new_clinic.address, 500);
       if (body.new_clinic.gps_code) body.new_clinic.gps_code = cap(body.new_clinic.gps_code, 80);
       if (body.new_clinic.contact) body.new_clinic.contact = cap(body.new_clinic.contact, 40);
-      if (body.new_clinic.email && !isEmail(body.new_clinic.email)) return json({ error: 'Invalid organization email' }, 400);
+      if (body.new_clinic.email && !isEmail(body.new_clinic.email)) return fail('Invalid organization email');
       if (body.new_clinic.email) body.new_clinic.email = cap(body.new_clinic.email, 320);
     }
     if (body.new_hospital) {
@@ -81,20 +89,23 @@ Deno.serve(async (req) => {
       if (body.new_hospital.address) body.new_hospital.address = cap(body.new_hospital.address, 500);
       if (body.new_hospital.gps_code) body.new_hospital.gps_code = cap(body.new_hospital.gps_code, 80);
       if (body.new_hospital.contact) body.new_hospital.contact = cap(body.new_hospital.contact, 40);
-      if (body.new_hospital.email && !isEmail(body.new_hospital.email)) return json({ error: 'Invalid organization email' }, 400);
+      if (body.new_hospital.email && !isEmail(body.new_hospital.email)) return fail('Invalid organization email');
       if (body.new_hospital.email) body.new_hospital.email = cap(body.new_hospital.email, 320);
       if (body.new_hospital.departments) {
         body.new_hospital.departments = body.new_hospital.departments.slice(0, 20).map((d) => cap(d, 80));
       }
     }
-    if (body.clinic_id && !UUID_RE.test(body.clinic_id)) return json({ error: 'Invalid clinic reference' }, 400);
-    if (body.hospital_id && !UUID_RE.test(body.hospital_id)) return json({ error: 'Invalid hospital reference' }, 400);
+    if (body.clinic_id && !UUID_RE.test(body.clinic_id)) return fail('Invalid clinic reference');
+    if (body.hospital_id && !UUID_RE.test(body.hospital_id)) return fail('Invalid hospital reference');
 
     // Resolve clinic
     let clinic_id = body.clinic_id ?? null;
     if (body.role === 'clinic_user' && !clinic_id && body.new_clinic) {
       const { data: c, error: e } = await admin.from('clinics').insert(body.new_clinic).select('id').single();
-      if (e) return json({ error: 'Clinic create failed: ' + e.message }, 400);
+      if (e) {
+        console.error(e);
+        return fail('Clinic create failed');
+      }
       clinic_id = c.id;
     }
 
@@ -102,7 +113,10 @@ Deno.serve(async (req) => {
     let hospital_id = body.hospital_id ?? null;
     if ((body.role === 'hospital_admin' || body.role === 'hospital_staff') && !hospital_id && body.new_hospital) {
       const { data: h, error: e } = await admin.from('hospitals').insert(body.new_hospital).select('id').single();
-      if (e) return json({ error: 'Hospital create failed: ' + e.message }, 400);
+      if (e) {
+        console.error(e);
+        return fail('Hospital create failed');
+      }
       hospital_id = h.id;
     }
 
@@ -113,7 +127,10 @@ Deno.serve(async (req) => {
       email_confirm: true,
       user_metadata: { full_name: body.full_name, phone: body.phone },
     });
-    if (createErr || !created.user) return json({ error: 'Auth create failed: ' + (createErr?.message ?? '') }, 400);
+    if (createErr || !created.user) {
+      console.error(createErr);
+      return fail('Auth create failed');
+    }
 
     const newUserId = created.user.id;
 

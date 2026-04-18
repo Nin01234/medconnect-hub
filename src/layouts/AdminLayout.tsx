@@ -42,7 +42,7 @@ export default function AdminLayout() {
       {!isLg && mobileOpen ? (
         <button
           type="button"
-          className="fixed inset-0 z-20 bg-background/80 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-20 bg-background/80 backdrop-blur-sm lg:hidden no-print"
           aria-label="Close menu"
           onClick={() => setMobileOpen(false)}
         />
@@ -51,7 +51,7 @@ export default function AdminLayout() {
       {isLg && !desktopNavOpen ? (
         <button
           type="button"
-          className="fixed left-0 top-1/2 z-[35] -translate-y-1/2 rounded-r-lg border border-sidebar-border border-l-0 bg-sidebar p-2.5 text-sidebar-foreground shadow-md hover:bg-sidebar-accent"
+          className="fixed left-0 top-1/2 z-[35] -translate-y-1/2 rounded-r-lg border border-sidebar-border border-l-0 bg-sidebar p-2.5 text-sidebar-foreground shadow-md hover:bg-sidebar-accent no-print"
           onClick={() => setDesktopNavOpen(true)}
           aria-label="Open navigation"
         >
@@ -61,7 +61,7 @@ export default function AdminLayout() {
 
       <aside
         className={cn(
-          "fixed lg:sticky top-0 left-0 h-[100dvh] min-h-0 w-64 max-w-[min(100vw,16rem)] bg-sidebar text-sidebar-foreground p-4 z-30 transition-transform duration-200 ease-out flex flex-col shadow-xl lg:shadow-none",
+          "fixed lg:sticky top-0 left-0 h-[100dvh] min-h-0 w-64 max-w-[min(100vw,16rem)] bg-sidebar text-sidebar-foreground p-4 z-30 transition-transform duration-200 ease-out flex flex-col shadow-xl lg:shadow-none no-print",
           navVisible ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -108,7 +108,7 @@ export default function AdminLayout() {
       </aside>
 
       <div className="flex-1 lg:ml-0 flex flex-col min-w-0">
-        <header className="lg:hidden bg-card border-b h-14 flex items-center px-4 sticky top-0 z-20 gap-2 min-w-0">
+        <header className="lg:hidden bg-card border-b h-14 flex items-center px-4 sticky top-0 z-20 gap-2 min-w-0 no-print">
           <button
             type="button"
             onClick={() => setMobileOpen((o) => !o)}

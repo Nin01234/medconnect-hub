@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, hasRole } from "@/context/AuthContext";
@@ -17,6 +17,7 @@ import { safeClientError } from "@/lib/safeError";
 interface Referral {
   id: string; unique_id: string | null; referral_number: string | null; patient_name: string; patient_age: number | null; patient_gender: string | null;
   patient_phone: string | null; diagnosis: string | null; symptoms: string | null; urgency_level: string;
+  vitals_bp: string | null; vitals_hr: string | null; vitals_temp: string | null; vitals_rr: string | null; vitals_spo2: string | null;
   referral_reason: string | null; notes: string | null; status: string; rejection_reason: string | null;
   hospital_feedback: string | null; clinic_id: string | null; hospital_id: string | null; assigned_doctor_id: string | null;
   created_at: string; updated_at: string;
@@ -41,23 +42,41 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   const [feedback, setFeedback] = useState("");
   const [doctorId, setDoctorId] = useState("");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!id) return;
-    const { data } = await supabase.from("referrals")
+    const { data, error } = await supabase.from("referrals")
       .select("*, clinics(name,unique_id,city,contact,region), hospitals(name,unique_id,city), doctors(full_name,unique_id,specialty)")
       .eq("id", id).maybeSingle();
+    if (error) {
+      toast.error(safeClientError(error));
+      setRef(null);
+      return;
+    }
+    if (!data) {
+      // Most common causes: not found, or blocked by RLS (not authorized for this referral).
+      toast.error("Referral not found or you don’t have access.");
+      setRef(null);
+      nav(-1);
+      return;
+    }
     setRef(data as unknown as Referral);
-    const [{ data: a }, { data: h }] = await Promise.all([
+    const [{ data: a, error: attachmentsErr }, { data: h, error: historyErr }] = await Promise.all([
       supabase.from("referral_attachments").select("*").eq("referral_id", id),
       supabase.from("referral_status_history").select("*").eq("referral_id", id).order("created_at"),
     ]);
+    if (attachmentsErr) {
+      toast.error(`Failed to load attachments: ${safeClientError(attachmentsErr)}`);
+    }
+    if (historyErr) {
+      toast.error(`Failed to load timeline: ${safeClientError(historyErr)}`);
+    }
     setAtts((a ?? []) as Att[]);
     setHist((h ?? []) as Hist[]);
     if (portal === "hospital" && profile?.hospital_id) {
       const { data: d } = await supabase.from("doctors").select("id,full_name,specialty").eq("hospital_id", profile.hospital_id).eq("status","active");
       setDoctors((d ?? []) as Doctor[]);
     }
-  };
+  }, [id, nav, portal, profile?.hospital_id]);
 
   useEffect(() => {
     load();
@@ -66,7 +85,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
       .on("postgres_changes", { event: "*", schema: "public", table: "referrals", filter: `id=eq.${id}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [id]);
+  }, [id, load]);
 
   if (!ref) return <div className="p-10 text-center text-muted-foreground">Loading…</div>;
 
@@ -164,6 +183,15 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
           <div className="mt-6 space-y-5">
             <Section title="Diagnosis"><p className="text-sm leading-relaxed whitespace-pre-wrap">{ref.diagnosis ?? "—"}</p></Section>
             <Section title="Symptoms"><p className="text-sm leading-relaxed whitespace-pre-wrap">{ref.symptoms ?? "—"}</p></Section>
+            <Section title="Vitals">
+              <div className="grid md:grid-cols-2 gap-x-6">
+                <Row k="Blood Pressure" v={ref.vitals_bp ?? "—"} />
+                <Row k="Heart Rate" v={ref.vitals_hr ?? "—"} />
+                <Row k="Temperature" v={ref.vitals_temp ?? "—"} />
+                <Row k="Respiratory Rate" v={ref.vitals_rr ?? "—"} />
+                <Row k="SpO2" v={ref.vitals_spo2 ?? "—"} />
+              </div>
+            </Section>
             <Section title="Reason for Referral"><p className="text-sm leading-relaxed whitespace-pre-wrap">{ref.referral_reason ?? "—"}</p></Section>
             {ref.notes && <Section title="Notes"><p className="text-sm leading-relaxed whitespace-pre-wrap">{ref.notes}</p></Section>}
           </div>

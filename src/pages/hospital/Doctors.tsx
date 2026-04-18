@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, hasRole } from "@/context/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,17 +22,20 @@ export default function Doctors() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [form, setForm] = useState({ full_name: "", specialty: "", phone: "", email: "" });
 
-  const load = async () => {
-    if (!profile?.hospital_id) return;
-    const { data } = await supabase.from("doctors").select("*").eq("hospital_id", profile.hospital_id).order("created_at",{ascending:false});
+  const hospitalId = profile?.hospital_id ?? null;
+
+  const load = useCallback(async () => {
+    if (!hospitalId) return;
+    const { data } = await supabase.from("doctors").select("*").eq("hospital_id", hospitalId).order("created_at",{ascending:false});
     setList((data ?? []) as Doctor[]);
     // Workload counts
-    const { data: refs } = await supabase.from("referrals").select("assigned_doctor_id").eq("hospital_id", profile.hospital_id).in("status",["assigned","treated"]);
+    const { data: refs } = await supabase.from("referrals").select("assigned_doctor_id").eq("hospital_id", hospitalId).in("status",["assigned","treated"]);
     const c: Record<string, number> = {};
     (refs ?? []).forEach(r => { if (r.assigned_doctor_id) c[r.assigned_doctor_id] = (c[r.assigned_doctor_id] ?? 0) + 1; });
     setCounts(c);
-  };
-  useEffect(() => { load(); }, [profile?.hospital_id]);
+  }, [hospitalId]);
+
+  useEffect(() => { load(); }, [load]);
 
   const create = async () => {
     if (!profile?.hospital_id) return;

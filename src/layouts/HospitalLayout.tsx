@@ -1,7 +1,7 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Inbox, ClipboardList, MessageSquare, LogOut, Activity, Users, Menu, MessageCircleHeart, PanelLeft, PanelLeftClose } from "lucide-react";
+import { LayoutDashboard, Inbox, ClipboardList, MessageSquare, LogOut, Activity, Users, Menu, MessageCircleHeart, PanelLeft, PanelLeftClose, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -15,6 +15,7 @@ const links = [
   { to: "/hospital/feedback", label: "Feedback Center", icon: MessageCircleHeart },
   { to: "/hospital/doctors", label: "Doctors", icon: Users },
   { to: "/hospital/messages", label: "Messages", icon: MessageSquare },
+  { to: "/hospital/reset-password", label: "Reset password", icon: KeyRound },
 ];
 
 export default function HospitalLayout() {
@@ -39,8 +40,8 @@ export default function HospitalLayout() {
   return (
     <div className="min-h-screen min-h-[100dvh] bg-background">
       {/* Top bar — gold accent strip + dense */}
-      <div className="h-1 bg-gradient-gold" />
-      <header className="bg-card border-b sticky top-0 z-30">
+      <div className="h-1 bg-gradient-gold no-print" />
+      <header className="bg-card border-b sticky top-0 z-30 no-print">
         <div className="flex items-center justify-between px-4 lg:px-6 h-14 gap-2 min-w-0">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
@@ -87,7 +88,7 @@ export default function HospitalLayout() {
       {!isLg && mobileOpen ? (
         <button
           type="button"
-          className="fixed inset-0 z-10 bg-background/80 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-10 bg-background/80 backdrop-blur-sm lg:hidden no-print"
           aria-label="Close menu"
           onClick={() => setMobileOpen(false)}
         />
@@ -96,7 +97,7 @@ export default function HospitalLayout() {
       <div className="flex relative min-w-0">
         <aside
           className={cn(
-            "fixed lg:sticky top-[3.75rem] left-0 h-[calc(100dvh-3.75rem)] w-60 max-w-[85vw] bg-card border-r p-3 z-20 transition-transform duration-200 ease-out shadow-lg lg:shadow-none",
+            "fixed lg:sticky top-[3.75rem] left-0 h-[calc(100dvh-3.75rem)] w-60 max-w-[85vw] bg-card border-r p-3 z-20 transition-transform duration-200 ease-out shadow-lg lg:shadow-none no-print",
             navVisible ? "translate-x-0" : "-translate-x-full",
           )}
         >

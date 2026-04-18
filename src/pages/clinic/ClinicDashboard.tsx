@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { StatCard } from "@/components/StatCard";
@@ -24,11 +24,13 @@ export default function ClinicDashboard() {
   const [rows, setRows] = useState<Row[]>([]);
   const [counts, setCounts] = useState({ total: 0, pending: 0, accepted: 0, rejected: 0, completed: 0 });
 
-  const load = async () => {
-    if (!profile?.clinic_id) return;
+  const clinicId = profile?.clinic_id ?? null;
+
+  const load = useCallback(async () => {
+    if (!clinicId) return;
     const { data } = await supabase.from("referrals")
       .select("id, referral_number, patient_name, status, urgency_level, created_at, hospital_feedback")
-      .eq("clinic_id", profile.clinic_id)
+      .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(50);
     const list = (data ?? []) as Row[];
@@ -40,16 +42,16 @@ export default function ClinicDashboard() {
       rejected: list.filter(r => r.status === "rejected").length,
       completed: list.filter(r => r.status === "completed").length,
     });
-  };
+  }, [clinicId]);
 
   useEffect(() => {
     load();
-    if (!profile?.clinic_id) return;
+    if (!clinicId) return;
     const ch = supabase.channel("clinic-referrals")
-      .on("postgres_changes", { event: "*", schema: "public", table: "referrals", filter: `clinic_id=eq.${profile.clinic_id}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "referrals", filter: `clinic_id=eq.${clinicId}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [profile?.clinic_id]);
+  }, [clinicId, load]);
 
   return (
     <div className="space-y-6">

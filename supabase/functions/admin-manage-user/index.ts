@@ -6,6 +6,9 @@ const corsHeaders = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ALLOWED_ACTIONS = new Set(["approve_user", "update_user", "reset_password", "delete_user"]);
+const ALLOWED_ROLES = new Set(["clinic_user", "hospital_admin", "hospital_staff", "admin"]);
+const ALLOWED_STATUS = new Set(["pending_approval", "active", "rejected", "suspended"]);
 
 function cap(s: string, max: number): string {
   return s.replace(/\0/g, "").trim().slice(0, max);
@@ -30,6 +33,10 @@ interface Payload {
   new_password?: string;
 }
 
+function fail(message: string, status = 400): Response {
+  return json({ error: message }, status);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -51,20 +58,26 @@ Deno.serve(async (req) => {
     if (!roleRow) return json({ error: "Forbidden: admin role required" }, 403);
 
     const body = (await req.json()) as Payload;
-    if (!body.user_id || !body.action) return json({ error: "Missing required fields" }, 400);
-    if (!UUID_RE.test(body.user_id)) return json({ error: "Invalid user reference" }, 400);
+    if (!body.user_id || !body.action) return fail("Missing required fields");
+    if (!ALLOWED_ACTIONS.has(body.action)) return fail("Invalid action");
+    if (!UUID_RE.test(body.user_id)) return fail("Invalid user reference");
     if (body.full_name) body.full_name = cap(body.full_name, 200);
     if (body.phone) body.phone = cap(body.phone, 40);
     if (body.email) {
       body.email = cap(body.email.toLowerCase(), 320);
-      if (!isEmail(body.email)) return json({ error: "Invalid email" }, 400);
+      if (!isEmail(body.email)) return fail("Invalid email");
     }
-    if (body.clinic_id && !UUID_RE.test(body.clinic_id)) return json({ error: "Invalid clinic reference" }, 400);
-    if (body.hospital_id && !UUID_RE.test(body.hospital_id)) return json({ error: "Invalid hospital reference" }, 400);
+    if (body.role && !ALLOWED_ROLES.has(body.role)) return fail("Invalid role");
+    if (body.status && !ALLOWED_STATUS.has(body.status)) return fail("Invalid status");
+    if (body.clinic_id && !UUID_RE.test(body.clinic_id)) return fail("Invalid clinic reference");
+    if (body.hospital_id && !UUID_RE.test(body.hospital_id)) return fail("Invalid hospital reference");
 
     if (body.action === "approve_user") {
       const { error } = await admin.from("profiles").update({ status: "active" }).eq("id", body.user_id);
-      if (error) return json({ error: error.message }, 400);
+      if (error) {
+        console.error(error);
+        return fail("Could not approve user");
+      }
     }
 
     if (body.action === "update_user") {
@@ -78,37 +91,54 @@ Deno.serve(async (req) => {
               ? { clinic_id: null, hospital_id: null }
               : {};
 
-      const profileUpdate = {
-        full_name: body.full_name,
-        email: body.email,
-        phone: body.phone,
-        status: body.status,
-        ...profileOrgUpdate,
-      };
-      const { error: profileError } = await admin.from("profiles").update(profileUpdate).eq("id", body.user_id);
-      if (profileError) return json({ error: profileError.message }, 400);
+      // Only include fields the caller actually sent, so status-only updates
+      // don't accidentally overwrite profile columns with null/undefined.
+      const profileUpdate: Record<string, unknown> = {};
+      if (body.full_name !== undefined) profileUpdate.full_name = body.full_name;
+      if (body.email !== undefined) profileUpdate.email = body.email;
+      if (body.phone !== undefined) profileUpdate.phone = body.phone;
+      if (body.status !== undefined) profileUpdate.status = body.status;
+      if (body.role !== undefined) Object.assign(profileUpdate, profileOrgUpdate);
 
-      if (body.email) {
+      const { error: profileError } = await admin.from("profiles").update(profileUpdate).eq("id", body.user_id);
+      if (profileError) {
+        console.error(profileError);
+        return fail("Could not update user profile");
+      }
+
+      if (body.email !== undefined) {
         const { error: authError } = await admin.auth.admin.updateUserById(body.user_id, { email: body.email });
-        if (authError) return json({ error: authError.message }, 400);
+        if (authError) {
+          console.error(authError);
+          return fail("Could not update auth email");
+        }
       }
       if (body.role) {
         await admin.from("user_roles").delete().eq("user_id", body.user_id);
         const { error: roleErr } = await admin.from("user_roles").insert({ user_id: body.user_id, role: body.role });
-        if (roleErr) return json({ error: roleErr.message }, 400);
+        if (roleErr) {
+          console.error(roleErr);
+          return fail("Could not update user role");
+        }
       }
     }
 
     if (body.action === "reset_password") {
-      if (!body.new_password || body.new_password.length < 6) return json({ error: "Password too short" }, 400);
+      if (!body.new_password || body.new_password.length < 6) return fail("Password too short");
       const pw = body.new_password.length > 128 ? body.new_password.slice(0, 128) : body.new_password;
       const { error } = await admin.auth.admin.updateUserById(body.user_id, { password: pw });
-      if (error) return json({ error: error.message }, 400);
+      if (error) {
+        console.error(error);
+        return fail("Could not reset password");
+      }
     }
 
     if (body.action === "delete_user") {
       const { error } = await admin.auth.admin.deleteUser(body.user_id);
-      if (error) return json({ error: error.message }, 400);
+      if (error) {
+        console.error(error);
+        return fail("Could not delete user");
+      }
     }
 
     await admin.from("audit_logs").insert({

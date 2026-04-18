@@ -136,3 +136,5 @@ Export each table from your current backend (Cloud → Database → Tables → E
 ```bash
 npm test
 ```
+cd medconnect-hub
+npm run dev

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Check, KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, KeyRound, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   adminCreateUserSchema,
@@ -15,6 +15,7 @@ import {
   resetPasswordSchema,
 } from "@/lib/validation";
 import { safeClientError, safeFunctionError } from "@/lib/safeError";
+import { sanitizeOptionalText, sanitizeText } from "@/lib/sanitize";
 
 type UserStatus = "pending_approval" | "active" | "rejected" | "suspended";
 
@@ -179,9 +180,9 @@ export default function UsersPage() {
     try {
       const v = validated.data;
       const payload: Record<string, unknown> = {
-        full_name: v.full_name,
-        email: v.email,
-        phone: v.phone || undefined,
+        full_name: sanitizeText(v.full_name, 200),
+        email: sanitizeText(v.email, 320).toLowerCase(),
+        phone: sanitizeOptionalText(v.phone || undefined, 40) ?? undefined,
         password: v.password,
         role: v.role,
         status: v.status,
@@ -190,30 +191,30 @@ export default function UsersPage() {
         if (v.org_mode === "existing") payload.clinic_id = v.clinic_id;
         else if (v.new_org) {
           payload.new_clinic = {
-            name: v.new_org.name,
-            type: v.new_org.type,
-            region: v.new_org.region,
-            city: v.new_org.city,
-            address: v.new_org.address,
-            gps_code: v.new_org.gps_code,
-            contact: v.new_org.contact,
-            email: v.new_org.email || undefined,
-            ownership_type: v.new_org.ownership_type,
+            name: sanitizeText(v.new_org.name, 200),
+            type: sanitizeText(v.new_org.type, 120),
+            region: sanitizeText(v.new_org.region, 120),
+            city: sanitizeText(v.new_org.city, 120),
+            address: sanitizeText(v.new_org.address, 500),
+            gps_code: sanitizeText(v.new_org.gps_code, 80),
+            contact: sanitizeText(v.new_org.contact, 40),
+            email: sanitizeOptionalText(v.new_org.email || undefined, 320) ?? undefined,
+            ownership_type: sanitizeOptionalText(v.new_org.ownership_type, 80) ?? undefined,
           };
         }
       } else if (v.role === "hospital_admin" || v.role === "hospital_staff") {
         if (v.org_mode === "existing") payload.hospital_id = v.hospital_id;
         else if (v.new_org) {
           payload.new_hospital = {
-            name: v.new_org.name,
-            type: v.new_org.type,
-            region: v.new_org.region,
-            city: v.new_org.city,
-            address: v.new_org.address,
-            gps_code: v.new_org.gps_code,
-            contact: v.new_org.contact,
-            email: v.new_org.email || undefined,
-            departments: v.new_org.departments,
+            name: sanitizeText(v.new_org.name, 200),
+            type: sanitizeText(v.new_org.type, 120),
+            region: sanitizeText(v.new_org.region, 120),
+            city: sanitizeText(v.new_org.city, 120),
+            address: sanitizeText(v.new_org.address, 500),
+            gps_code: sanitizeText(v.new_org.gps_code, 80),
+            contact: sanitizeText(v.new_org.contact, 40),
+            email: sanitizeOptionalText(v.new_org.email || undefined, 320) ?? undefined,
+            departments: (v.new_org.departments ?? []).slice(0, 20).map((d) => sanitizeText(d, 80)),
           };
         }
       }
@@ -270,9 +271,9 @@ export default function UsersPage() {
       await runAdminAction({
         action: "update_user",
         user_id: selected.id,
-        full_name: ed.full_name,
-        email: ed.email,
-        phone: ed.phone || undefined,
+        full_name: sanitizeText(ed.full_name, 200),
+        email: sanitizeText(ed.email, 320).toLowerCase(),
+        phone: sanitizeOptionalText(ed.phone || undefined, 40) ?? undefined,
         role: ed.role,
         status: ed.status,
         clinic_id: ed.role === "clinic_user" ? (ed.clinic_id || null) : null,
@@ -293,6 +294,19 @@ export default function UsersPage() {
     try {
       await runAdminAction({ action: "approve_user", user_id: u.id });
       toast.success("User approved");
+      await load();
+    } catch (e) {
+      toast.error(await safeFunctionError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setStatus = async (u: UserRow, status: UserStatus) => {
+    setBusy(true);
+    try {
+      await runAdminAction({ action: "update_user", user_id: u.id, status });
+      toast.success(status === "active" ? "User activated" : "User deactivated");
       await load();
     } catch (e) {
       toast.error(await safeFunctionError(e));
@@ -500,6 +514,24 @@ export default function UsersPage() {
                       <div className="flex flex-wrap gap-2">
                         {u.status === "pending_approval" && (
                           <Button size="sm" variant="outlineBrand" disabled={busy} onClick={() => approve(u)}><Check className="h-3.5 w-3.5" /> Approve</Button>
+                        )}
+                        {u.status === "active" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                              if (!window.confirm(`Deactivate ${u.full_name ?? u.email ?? "this user"}?`)) return;
+                              setStatus(u, "suspended");
+                            }}
+                          >
+                            <Power className="h-3.5 w-3.5" /> Deactivate
+                          </Button>
+                        )}
+                        {(u.status === "suspended" || u.status === "rejected") && (
+                          <Button size="sm" variant="outlineBrand" disabled={busy} onClick={() => setStatus(u, "active")}>
+                            <Power className="h-3.5 w-3.5" /> Activate
+                          </Button>
                         )}
                         <Button size="sm" variant="outline" disabled={busy} onClick={() => openEdit(u)}><Pencil className="h-3.5 w-3.5" /> Edit</Button>
                         <Button size="sm" variant="outline" disabled={busy} onClick={() => { setSelected(u); setResetOpen(true); }}><KeyRound className="h-3.5 w-3.5" /> Reset</Button>

@@ -17,6 +17,7 @@ const PortalRouter = lazy(() => import("./pages/PortalRouter"));
 const ClinicLayout = lazy(() => import("./layouts/ClinicLayout"));
 const HospitalLayout = lazy(() => import("./layouts/HospitalLayout"));
 const AdminLayout = lazy(() => import("./layouts/AdminLayout"));
+const PortalResetPassword = lazy(() => import("./pages/portal/ResetPasswordPage"));
 const ClinicDashboard = lazy(() => import("./pages/clinic/ClinicDashboard"));
 const CreateReferral = lazy(() => import("./pages/clinic/CreateReferral"));
 const MyReferrals = lazy(() => import("./pages/clinic/MyReferrals"));
@@ -60,6 +61,7 @@ const App = () => (
                   <Route path="referrals" element={<MyReferrals />} />
                   <Route path="referrals/:id" element={<ReferralDetail portal="clinic" />} />
                   <Route path="messages" element={<ClinicMessages />} />
+                  <Route path="reset-password" element={<PortalResetPassword />} />
                 </Route>
 
                 <Route path="/hospital" element={<RequireRole roles={["hospital_admin", "hospital_staff", "admin"]}><HospitalLayout /></RequireRole>}>
@@ -70,6 +72,7 @@ const App = () => (
                   <Route path="feedback" element={<FeedbackCenter />} />
                   <Route path="doctors" element={<Doctors />} />
                   <Route path="messages" element={<HospitalMessages />} />
+                  <Route path="reset-password" element={<PortalResetPassword />} />
                 </Route>
 
                 <Route path="/admin" element={<RequireRole roles={["admin"]}><AdminLayout /></RequireRole>}>

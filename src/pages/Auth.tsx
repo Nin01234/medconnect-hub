@@ -103,7 +103,11 @@ export default function Auth() {
         const isAdmin = (roles ?? []).some((r: { role: string }) => r.role === "admin");
         if (!isAdmin && profile?.status !== "active") {
           await supabase.auth.signOut();
-          throw new Error("Your account is pending admin approval.");
+          const status = profile?.status;
+          if (status === "pending_approval") throw new Error("Your account is pending admin approval.");
+          if (status === "suspended") throw new Error("Your account has been deactivated. Please contact an admin.");
+          if (status === "rejected") throw new Error("Your account request was rejected. Please contact an admin.");
+          throw new Error("Your account is not active. Please contact an admin.");
         }
         toast.success("Welcome back");
       }
