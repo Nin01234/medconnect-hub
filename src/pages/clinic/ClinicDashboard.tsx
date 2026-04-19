@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { referralKeys } from "@/lib/referralQueryKeys";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
@@ -21,37 +24,54 @@ interface Row {
 
 export default function ClinicDashboard() {
   const { profile } = useAuth();
-  const [rows, setRows] = useState<Row[]>([]);
-  const [counts, setCounts] = useState({ total: 0, pending: 0, accepted: 0, rejected: 0, completed: 0 });
-
+  const queryClient = useQueryClient();
   const clinicId = profile?.clinic_id ?? null;
 
-  const load = useCallback(async () => {
-    if (!clinicId) return;
-    const { data } = await supabase.from("referrals")
-      .select("id, referral_number, patient_name, status, urgency_level, created_at, hospital_feedback")
-      .eq("clinic_id", clinicId)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    const list = (data ?? []) as Row[];
-    setRows(list);
-    setCounts({
+  const { data: rows = [] } = useQuery({
+    queryKey: clinicId ? referralKeys.clinicDashboard(clinicId) : ["referrals", "clinic", "inactive", "dashboard"],
+    enabled: !!clinicId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("referrals")
+        .select("id, referral_number, patient_name, status, urgency_level, created_at, hospital_feedback")
+        .eq("clinic_id", clinicId!)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as Row[];
+    },
+  });
+
+  const counts = useMemo(() => {
+    const list = rows;
+    return {
       total: list.length,
-      pending: list.filter(r => ["submitted","new","under_review","info_requested"].includes(r.status)).length,
-      accepted: list.filter(r => ["accepted","assigned","treated"].includes(r.status)).length,
-      rejected: list.filter(r => r.status === "rejected").length,
-      completed: list.filter(r => r.status === "completed").length,
-    });
-  }, [clinicId]);
+      pending: list.filter((r) => ["submitted", "new", "under_review", "info_requested"].includes(r.status)).length,
+      accepted: list.filter((r) => ["accepted", "assigned", "treated"].includes(r.status)).length,
+      rejected: list.filter((r) => r.status === "rejected").length,
+      completed: list.filter((r) => r.status === "completed").length,
+    };
+  }, [rows]);
+
+  const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
+    if (clinicId) void queryClient.invalidateQueries({ queryKey: referralKeys.clinicRoot(clinicId) });
+  }, 400);
 
   useEffect(() => {
-    load();
     if (!clinicId) return;
-    const ch = supabase.channel("clinic-referrals")
-      .on("postgres_changes", { event: "*", schema: "public", table: "referrals", filter: `clinic_id=eq.${clinicId}` }, load)
+    const ch = supabase
+      .channel("clinic-referrals")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "referrals", filter: `clinic_id=eq.${clinicId}` },
+        debouncedRealtime,
+      )
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [clinicId, load]);
+    return () => {
+      cancelDebouncedRealtime();
+      supabase.removeChannel(ch);
+    };
+  }, [clinicId, debouncedRealtime, cancelDebouncedRealtime]);
 
   return (
     <div className="space-y-6">
@@ -61,7 +81,11 @@ export default function ClinicDashboard() {
             <h1 className="font-display text-3xl font-bold">Clinic Overview</h1>
             <p className="text-muted-foreground mt-1">Track referral progress, urgency, and outcomes in real time.</p>
           </div>
-          <Link to="/clinic/referrals/new"><Button variant="hero"><FilePlus2 className="h-4 w-4" /> Create Referral</Button></Link>
+          <Link to="/clinic/referrals/new">
+            <Button variant="hero">
+              <FilePlus2 className="h-4 w-4" /> Create Referral
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -82,11 +106,17 @@ export default function ClinicDashboard() {
             <div className="p-10 text-center text-muted-foreground">No referrals yet. Create your first one.</div>
           ) : (
             <div className="divide-y">
-              {rows.slice(0,8).map(r => (
-                <Link key={r.id} to={`/clinic/referrals/${r.id}`} className="grid grid-cols-12 gap-3 items-center px-5 py-3 hover:bg-secondary/40 transition-colors">
+              {rows.slice(0, 8).map((r) => (
+                <Link
+                  key={r.id}
+                  to={`/clinic/referrals/${r.id}`}
+                  className="grid grid-cols-12 gap-3 items-center px-5 py-3 hover:bg-secondary/40 transition-colors"
+                >
                   <div className="col-span-12 md:col-span-3 font-mono text-xs text-muted-foreground">{r.referral_number}</div>
                   <div className="col-span-6 md:col-span-4 font-medium">{r.patient_name}</div>
-                  <div className="col-span-3 md:col-span-2"><UrgencyBadge level={r.urgency_level} /></div>
+                  <div className="col-span-3 md:col-span-2">
+                    <UrgencyBadge level={r.urgency_level} />
+                  </div>
                   <div className="col-span-3 md:col-span-2 flex flex-wrap items-center gap-2 justify-end md:justify-start">
                     <StatusBadge status={r.status} />
                     {r.hospital_feedback?.trim() ? (
@@ -95,7 +125,9 @@ export default function ClinicDashboard() {
                       </Badge>
                     ) : null}
                   </div>
-                  <div className="hidden md:block md:col-span-1 text-xs text-muted-foreground text-right">{new Date(r.created_at).toLocaleDateString()}</div>
+                  <div className="hidden md:block md:col-span-1 text-xs text-muted-foreground text-right">
+                    {new Date(r.created_at).toLocaleDateString()}
+                  </div>
                 </Link>
               ))}
             </div>

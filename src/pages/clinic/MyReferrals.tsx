@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 interface Row {
   id: string;
   referral_number: string | null;
+  patient_id: string | null;
   patient_name: string;
   status: string;
   urgency_level: string;
@@ -28,7 +29,7 @@ export default function MyReferrals() {
   useEffect(() => {
     if (!profile?.clinic_id) return;
     supabase.from("referrals")
-      .select("id, referral_number, patient_name, status, urgency_level, created_at, hospital_feedback, hospitals(name)")
+      .select("id, referral_number, patient_id, patient_name, status, urgency_level, created_at, hospital_feedback, hospitals(name)")
       .eq("clinic_id", profile.clinic_id)
       .order("created_at", { ascending: false })
       .then(({ data }) => setRows((data ?? []) as unknown as Row[]));
@@ -71,6 +72,7 @@ export default function MyReferrals() {
                 <th className="text-left px-5 py-3">Urgency</th>
                 <th className="text-left px-5 py-3">Status</th>
                 <th className="text-left px-5 py-3">Feedback</th>
+                <th className="text-left px-5 py-3">Patient history</th>
                 <th className="text-left px-5 py-3">Created</th>
               </tr>
             </thead>
@@ -91,10 +93,19 @@ export default function MyReferrals() {
                       <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </td>
+                  <td className="px-5 py-3 text-xs">
+                    {r.patient_id ? (
+                      <Link to={`/clinic/patients/${r.patient_id}`} className="text-primary hover:underline">
+                        View history
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-muted-foreground text-xs">{new Date(r.created_at).toLocaleString()}</td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-muted-foreground">No referrals match.</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={8} className="text-center py-10 text-muted-foreground">No referrals match.</td></tr>}
             </tbody>
           </table>
         </CardContent>

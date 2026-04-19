@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, hasRole } from "@/context/AuthContext";
+import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
@@ -9,13 +10,13 @@ import { MessagePanel } from "@/components/MessagePanel";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Printer, Download, Paperclip, Clock } from "lucide-react";
+import { ArrowLeft, Printer, Download, Paperclip, Clock, History } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { sanitizeText } from "@/lib/sanitize";
 import { safeClientError } from "@/lib/safeError";
 
 interface Referral {
-  id: string; unique_id: string | null; referral_number: string | null; patient_name: string; patient_age: number | null; patient_gender: string | null;
+  id: string; unique_id: string | null; referral_number: string | null; patient_id: string | null; patient_name: string; patient_age: number | null; patient_gender: string | null;
   patient_phone: string | null; diagnosis: string | null; symptoms: string | null; urgency_level: string;
   vitals_bp: string | null; vitals_hr: string | null; vitals_temp: string | null; vitals_rr: string | null; vitals_spo2: string | null;
   referral_reason: string | null; notes: string | null; status: string; rejection_reason: string | null;
@@ -78,14 +79,21 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     }
   }, [id, nav, portal, profile?.hospital_id]);
 
+  const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
+    void load();
+  }, 400);
+
   useEffect(() => {
     load();
     if (!id) return;
     const ch = supabase.channel(`ref-${id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "referrals", filter: `id=eq.${id}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "referrals", filter: `id=eq.${id}` }, debouncedRealtime)
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [id, load]);
+    return () => {
+      cancelDebouncedRealtime();
+      supabase.removeChannel(ch);
+    };
+  }, [id, load, debouncedRealtime, cancelDebouncedRealtime]);
 
   if (!ref) return <div className="p-10 text-center text-muted-foreground">Loading…</div>;
 
@@ -136,7 +144,16 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     <div className="max-w-6xl mx-auto space-y-5">
       <div className="flex items-center justify-between no-print flex-wrap gap-3">
         <Button variant="ghost" size="sm" onClick={() => nav(-1)}><ArrowLeft className="h-4 w-4" /> Back</Button>
-        <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {ref.patient_id ? (
+            <Button variant="outline" size="sm" asChild>
+              <Link to={isHospital ? `/hospital/patients/${ref.patient_id}` : `/clinic/patients/${ref.patient_id}`}>
+                <History className="h-4 w-4" /> Patient referral history
+              </Link>
+            </Button>
+          ) : null}
+          <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
+        </div>
       </div>
 
       <Card className="shadow-elevated">
@@ -146,8 +163,15 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
             <div>
               <p className="text-xs uppercase tracking-widest text-muted-foreground">Medical Referral</p>
               <h1 className="font-display text-3xl font-bold mt-1">{ref.patient_name}</h1>
-              <p className="font-mono text-xs text-muted-foreground mt-1">Referral ID: {ref.unique_id ?? "—"}</p>
-              <p className="font-mono text-sm text-muted-foreground mt-1">{ref.referral_number}</p>
+              <div className="mt-2 space-y-0.5">
+                {ref.referral_number ? (
+                  <p className="font-mono text-lg font-semibold tracking-tight text-foreground">{ref.referral_number}</p>
+                ) : null}
+                <p className="font-mono text-xs text-muted-foreground">
+                  {ref.referral_number ? "Short ID: " : "Referral ID: "}
+                  {ref.unique_id ?? "—"}
+                </p>
+              </div>
             </div>
             <div className="flex flex-col items-end gap-2">
               <StatusBadge status={ref.status} />

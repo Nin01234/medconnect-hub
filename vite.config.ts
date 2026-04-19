@@ -11,6 +11,21 @@ export default defineConfig(() => ({
       overlay: false,
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const norm = id.replace(/\\/g, "/");
+          if (!norm.includes("node_modules")) return;
+          if (norm.includes("@supabase")) return "supabase";
+          if (norm.includes("@tanstack")) return "tanstack-query";
+          if (norm.includes("react-router")) return "react-router";
+          if (norm.includes("node_modules/react-dom/")) return "react-dom";
+          if (norm.includes("node_modules/react/")) return "react";
+        },
+      },
+    },
+  },
   plugins: [react()],
   resolve: {
     alias: {

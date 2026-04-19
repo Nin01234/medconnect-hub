@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
-import { RequireAuth, RequireRole } from "@/components/Guards";
+import { FullPageLoader, RequireAuth, RequireRole } from "@/components/Guards";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -36,8 +36,17 @@ const RolesPage = lazy(() => import("./pages/admin/RolesPage"));
 const AuditPage = lazy(() => import("./pages/admin/AuditPage"));
 const PendingApprovalsPage = lazy(() => import("./pages/admin/PendingApprovalsPage"));
 const ReferralDetail = lazy(() => import("./pages/ReferralDetail"));
+const PatientReferralHistory = lazy(() => import("./pages/PatientReferralHistory"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: true,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -48,7 +57,7 @@ const App = () => (
         <ThemeToggle />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <AuthProvider>
-            <Suspense fallback={<div className="min-h-screen bg-background" />}>
+            <Suspense fallback={<FullPageLoader />}>
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/auth" element={<Auth />} />
@@ -60,6 +69,7 @@ const App = () => (
                   <Route path="referrals/new" element={<CreateReferral />} />
                   <Route path="referrals" element={<MyReferrals />} />
                   <Route path="referrals/:id" element={<ReferralDetail portal="clinic" />} />
+                  <Route path="patients/:patientId" element={<PatientReferralHistory portal="clinic" />} />
                   <Route path="messages" element={<ClinicMessages />} />
                   <Route path="reset-password" element={<PortalResetPassword />} />
                 </Route>
@@ -68,6 +78,7 @@ const App = () => (
                   <Route index element={<HospitalDashboard />} />
                   <Route path="inbox" element={<HospitalInbox />} />
                   <Route path="referrals/:id/review" element={<ReferralDetail portal="hospital" />} />
+                  <Route path="patients/:patientId" element={<PatientReferralHistory portal="hospital" />} />
                   <Route path="assigned" element={<AssignedCases />} />
                   <Route path="feedback" element={<FeedbackCenter />} />
                   <Route path="doctors" element={<Doctors />} />

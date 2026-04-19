@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
@@ -28,6 +28,7 @@ import {
   MessageSquare,
   ScrollText,
   Search,
+  History,
   ShieldCheck,
   Stethoscope,
   UserCheck,
@@ -39,6 +40,7 @@ export type PortalSearchVariant = "clinic" | "hospital" | "admin";
 type ReferralHit = {
   id: string;
   referral_number: string | null;
+  patient_id: string | null;
   patient_name: string;
   status: string;
   hospitals?: { name: string } | null;
@@ -121,7 +123,7 @@ export function PortalSearch({
         if (variant === "clinic" && profile?.clinic_id) {
           const { data } = await supabase
             .from("referrals")
-            .select("id, referral_number, patient_name, status, hospitals(name)")
+            .select("id, referral_number, patient_id, patient_name, status, hospitals(name)")
             .eq("clinic_id", profile.clinic_id)
             .order("created_at", { ascending: false })
             .limit(500);
@@ -130,7 +132,7 @@ export function PortalSearch({
           const [refRes, docRes] = await Promise.all([
             supabase
               .from("referrals")
-              .select("id, referral_number, patient_name, status, clinics(name)")
+              .select("id, referral_number, patient_id, patient_name, status, clinics(name)")
               .eq("hospital_id", profile.hospital_id)
               .order("created_at", { ascending: false })
               .limit(500),
@@ -180,6 +182,16 @@ export function PortalSearch({
 
   const clinicName = profile?.clinics?.name;
   const hospitalName = profile?.hospitals?.name;
+
+  const patientHistoryEntries = useMemo(() => {
+    const byPatient = new Map<string, ReferralHit>();
+    for (const r of referrals) {
+      if (r.patient_id && !byPatient.has(r.patient_id)) {
+        byPatient.set(r.patient_id, r);
+      }
+    }
+    return [...byPatient.entries()];
+  }, [referrals]);
 
   return (
     <>
@@ -267,6 +279,32 @@ export function PortalSearch({
                   </CommandGroup>
                 </>
               )}
+              {patientHistoryEntries.length > 0 && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Patient referral histories">
+                    {patientHistoryEntries.map(([pid, r]) => (
+                      <CommandItem
+                        key={pid}
+                        value={[
+                          r.patient_name,
+                          "patient referral history timeline",
+                          r.referral_number,
+                          pid,
+                          referralSearchValue(r),
+                        ].join(" ")}
+                        onSelect={() => go(`/clinic/patients/${pid}`)}
+                      >
+                        <History className="mr-2 h-4 w-4" />
+                        <span className="truncate">
+                          {r.patient_name}
+                          <span className="text-muted-foreground ml-2 text-xs">All referrals on file</span>
+                        </span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
             </>
           )}
 
@@ -316,6 +354,32 @@ export function PortalSearch({
                         <span className="truncate">
                           {r.patient_name}
                           <span className="text-muted-foreground ml-2 font-mono text-xs">{r.referral_number ?? r.id.slice(0, 8)}</span>
+                        </span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+              {patientHistoryEntries.length > 0 && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Patient referral histories">
+                    {patientHistoryEntries.map(([pid, r]) => (
+                      <CommandItem
+                        key={pid}
+                        value={[
+                          r.patient_name,
+                          "patient referral history timeline",
+                          r.referral_number,
+                          pid,
+                          referralSearchValue(r),
+                        ].join(" ")}
+                        onSelect={() => go(`/hospital/patients/${pid}`)}
+                      >
+                        <History className="mr-2 h-4 w-4" />
+                        <span className="truncate">
+                          {r.patient_name}
+                          <span className="text-muted-foreground ml-2 text-xs">Cases at this hospital</span>
                         </span>
                       </CommandItem>
                     ))}

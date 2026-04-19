@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,13 +23,20 @@ export function MessagePanel({ referralId }: { referralId: string }) {
     setMsgs((data ?? []) as Msg[]);
   }, [referralId]);
 
+  const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
+    void load();
+  }, 250);
+
   useEffect(() => {
     load();
     const ch = supabase.channel(`msgs-${referralId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "referral_messages", filter: `referral_id=eq.${referralId}` }, load)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "referral_messages", filter: `referral_id=eq.${referralId}` }, debouncedRealtime)
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [referralId, load]);
+    return () => {
+      cancelDebouncedRealtime();
+      supabase.removeChannel(ch);
+    };
+  }, [referralId, load, debouncedRealtime, cancelDebouncedRealtime]);
 
   const send = async () => {
     if (!text.trim() || !user) return;

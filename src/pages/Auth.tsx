@@ -13,7 +13,8 @@ import { BRAND } from "@/lib/brand";
 import { useRotatingIndex } from "@/hooks/useRotatingIndex";
 import { AUTH_BULLET_ROTATIONS, HERO_ROTATIONS, SUBTEXT_ROTATIONS } from "@/lib/marketingRotations";
 import { MarketingHeroHeading } from "@/components/MarketingHero";
-import { authSignInSchema, authSignUpSchema } from "@/lib/validation";
+import { authSignInSchema, authSignUpSchema, LIMITS } from "@/lib/validation";
+import { sanitizeText } from "@/lib/sanitize";
 import { safeClientError } from "@/lib/safeError";
 
 const ROTATE_MS = 9000;
@@ -67,10 +68,10 @@ export default function Auth() {
           options: {
             emailRedirectTo: `${window.location.origin}/`,
             data: {
-              full_name: v.fullName,
-              phone: v.phone || undefined,
-              org_name: v.orgName,
-              org_type: v.orgType,
+              full_name: sanitizeText(v.fullName, LIMITS.name),
+              phone: v.phone ? sanitizeText(v.phone, LIMITS.phone) : undefined,
+              org_name: sanitizeText(v.orgName, LIMITS.name),
+              org_type: sanitizeText(v.orgType, LIMITS.orgType),
               signup_source: "self",
             },
           },

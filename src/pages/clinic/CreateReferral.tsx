@@ -88,6 +88,19 @@ export default function CreateReferral() {
       });
       if (patientErr) throw patientErr;
 
+      const pid = (patientId as string | null | undefined) ?? null;
+      let priorReferralCount = 0;
+      if (pid) {
+        const { count, error: countErr } = await supabase
+          .from("referrals")
+          .select("id", { count: "exact", head: true })
+          .eq("patient_id", pid)
+          .eq("clinic_id", profile.clinic_id);
+        if (!countErr && count != null) {
+          priorReferralCount = count;
+        }
+      }
+
       const { data: ref, error } = await supabase
         .from("referrals")
         .insert({
@@ -136,12 +149,18 @@ export default function CreateReferral() {
       }
 
       setUploadErrors(uploadFailures);
+      const historyHint =
+        pid && priorReferralCount > 0
+          ? ` Linked to existing patient record (${priorReferralCount} prior referral${priorReferralCount === 1 ? "" : "s"}).`
+          : "";
       if (uploadFailures.length > 0) {
         toast.warning(
-          `Referral submitted, but ${uploadFailures.length} attachment${uploadFailures.length > 1 ? "s" : ""} failed.`,
+          `Referral submitted, but ${uploadFailures.length} attachment${uploadFailures.length > 1 ? "s" : ""} failed.${historyHint}`,
         );
+      } else if (historyHint) {
+        toast.success(`Referral submitted.${historyHint}`);
       } else {
-        toast.success("Referral submitted");
+        toast.success("Referral submitted.");
       }
       nav(`/clinic/referrals/${ref.id}`);
     } catch (err) {
