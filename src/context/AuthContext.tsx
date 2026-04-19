@@ -99,17 +99,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(sess);
       setUser(sess?.user ?? null);
       if (sess?.user) {
-        void loadProfile(sess.user.id);
+        setLoading(true);
+        void loadProfile(sess.user.id)
+          .catch(() => {
+            setProfile(null);
+            setRoles([]);
+          })
+          .finally(() => setLoading(false));
       } else {
         setProfile(null);
         setRoles([]);
+        setLoading(false);
       }
     });
 
     supabase.auth.getSession().then(({ data: { session: sess } }) => {
       setSession(sess);
       setUser(sess?.user ?? null);
-      if (sess?.user) loadProfile(sess.user.id).finally(() => setLoading(false));
+      if (sess?.user) {
+        setLoading(true);
+        loadProfile(sess.user.id)
+          .catch(() => {
+            setProfile(null);
+            setRoles([]);
+          })
+          .finally(() => setLoading(false));
+      }
       else setLoading(false);
     });
 
@@ -153,13 +168,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const listeners: [keyof DocumentEventMap, EventListener, AddEventListenerOptions?][] = [
-      ["mousedown", bump],
+      ["pointerdown", bump],
       ["keydown", bump],
       ["scroll", bump, { passive: true }],
       ["touchstart", bump, { passive: true }],
-      ["click", bump],
       ["wheel", bump, { passive: true }],
-      ["mousemove", bump],
+      ["visibilitychange", bump],
     ];
 
     for (const [evt, fn, opts] of listeners) {

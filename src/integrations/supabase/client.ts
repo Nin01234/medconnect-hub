@@ -7,12 +7,26 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+function isLikelyServiceRoleKey(key: string): boolean {
+  try {
+    const parts = key.split(".");
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(atob(parts[1])) as { role?: string };
+    return payload.role === "service_role";
+  } catch {
+    return false;
+  }
+}
+
 function assertEnv(): void {
   if (typeof SUPABASE_URL !== "string" || !SUPABASE_URL.startsWith("https://")) {
     throw new Error("Missing or invalid VITE_SUPABASE_URL. Set it in your environment (see .env.example).");
   }
   if (typeof SUPABASE_PUBLISHABLE_KEY !== "string" || SUPABASE_PUBLISHABLE_KEY.length < 20) {
     throw new Error("Missing or invalid VITE_SUPABASE_PUBLISHABLE_KEY. Set it in your environment (see .env.example).");
+  }
+  if (isLikelyServiceRoleKey(SUPABASE_PUBLISHABLE_KEY)) {
+    throw new Error("Unsafe key detected: VITE_SUPABASE_PUBLISHABLE_KEY must never be a service_role key.");
   }
 }
 

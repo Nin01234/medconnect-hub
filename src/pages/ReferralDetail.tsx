@@ -137,7 +137,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   const downloadFile = async (att: Att) => {
     const { data, error } = await supabase.storage.from("referral-attachments").createSignedUrl(att.file_path, 60);
     if (error || !data) return toast.error("Could not generate link");
-    window.open(data.signedUrl, "_blank");
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
 
   return (

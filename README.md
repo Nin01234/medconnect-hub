@@ -5,6 +5,7 @@ Hospital referral management for Ghana — clinics, hospitals, and admins. Built
 ## Security
 
 - **Secrets**: Never commit `.env`. Copy `.env.example` to `.env` locally. The repo ignores `.env`; only the Supabase **anon (publishable)** key belongs in the browser bundle (`VITE_SUPABASE_*`). **Do not** put the service role key in the frontend or in Vercel env vars exposed to the client.
+- **Deploy safety**: Before every GitHub push/redeploy, confirm no secrets are staged (`git status`) and keep server-only keys (`SUPABASE_SERVICE_ROLE_KEY`, private API tokens) only in Supabase Edge Functions or secure server environments, never in `VITE_*` vars.
 - **Input**: Forms use Zod validation, length limits, and string sanitization; edge functions cap and validate payloads and UUIDs.
 - **Errors**: Production toasts avoid leaking raw database or stack details; admin edge functions return a generic message on unexpected failures.
 - **Database**: Access is enforced by Supabase **RLS** and roles — keep policies reviewed when you change the schema.
