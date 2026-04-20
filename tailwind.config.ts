@@ -10,8 +10,8 @@ export default {
     container: { center: true, padding: "1.5rem", screens: { "2xl": "1400px" } },
     extend: {
       fontFamily: {
-        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
-        display: ['Fraunces', 'Georgia', 'serif'],
+        sans: ["Plus Jakarta Sans", "Inter", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "system-ui", "sans-serif"],
+        display: ["Fraunces", "Iowan Old Style", "Palatino Linotype", "Palatino", "Times New Roman", "Georgia", "serif"],
       },
       colors: {
         border: "hsl(var(--border))",

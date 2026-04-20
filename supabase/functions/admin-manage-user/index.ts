@@ -54,8 +54,14 @@ Deno.serve(async (req) => {
     const callerId = userData.user.id;
 
     const admin = createClient(SUPABASE_URL, SERVICE);
-    const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", callerId).eq("role", "admin").maybeSingle();
-    if (!roleRow) return json({ error: "Forbidden: admin role required" }, 403);
+    const [{ data: roleRows }, { data: callerProfile }] = await Promise.all([
+      admin.from("user_roles").select("role").eq("user_id", callerId),
+      admin.from("profiles").select("hospital_id").eq("id", callerId).maybeSingle(),
+    ]);
+    const callerRoles = new Set((roleRows ?? []).map((r) => r.role));
+    const isAdmin = callerRoles.has("admin");
+    const isHospitalAdmin = callerRoles.has("hospital_admin");
+    if (!isAdmin && !isHospitalAdmin) return json({ error: "Forbidden: admin role required" }, 403);
 
     const body = (await req.json()) as Payload;
     if (!body.user_id || !body.action) return fail("Missing required fields");
@@ -71,6 +77,31 @@ Deno.serve(async (req) => {
     if (body.status && !ALLOWED_STATUS.has(body.status)) return fail("Invalid status");
     if (body.clinic_id && !UUID_RE.test(body.clinic_id)) return fail("Invalid clinic reference");
     if (body.hospital_id && !UUID_RE.test(body.hospital_id)) return fail("Invalid hospital reference");
+
+    if (isHospitalAdmin && !isAdmin) {
+      const callerHospitalId = callerProfile?.hospital_id ?? null;
+      if (!callerHospitalId) return fail("Hospital admin must belong to a hospital", 403);
+
+      const { data: targetProfile, error: targetProfileError } = await admin
+        .from("profiles")
+        .select("hospital_id")
+        .eq("id", body.user_id)
+        .maybeSingle();
+      if (targetProfileError || !targetProfile) return fail("Target user not found", 404);
+
+      const { data: targetRoles } = await admin.from("user_roles").select("role").eq("user_id", body.user_id);
+      const targetRoleSet = new Set((targetRoles ?? []).map((r) => r.role));
+      if (!targetRoleSet.has("hospital_staff")) return fail("Hospital admins can only manage hospital staff accounts", 403);
+      if (targetProfile.hospital_id !== callerHospitalId) return fail("Hospital admins can only manage staff in their own hospital", 403);
+
+      if (body.role && body.role !== "hospital_staff") return fail("Hospital admins cannot change roles outside hospital staff", 403);
+      if (body.hospital_id && body.hospital_id !== callerHospitalId) return fail("Hospital admins cannot move staff to another hospital", 403);
+      if (body.clinic_id) return fail("Hospital admins cannot assign clinic links", 403);
+      if (body.action === "approve_user" || body.action === "update_user") {
+        body.role = "hospital_staff";
+        body.hospital_id = callerHospitalId;
+      }
+    }
 
     if (body.action === "approve_user") {
       const { error } = await admin.from("profiles").update({ status: "active" }).eq("id", body.user_id);

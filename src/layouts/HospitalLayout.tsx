@@ -14,6 +14,7 @@ const links = [
   { to: "/hospital/assigned", label: "Assigned Cases", icon: ClipboardList },
   { to: "/hospital/feedback", label: "Feedback Center", icon: MessageCircleHeart },
   { to: "/hospital/doctors", label: "Doctors", icon: Users },
+  { to: "/hospital/staff", label: "Staff Accounts", icon: Users },
   { to: "/hospital/messages", label: "Messages", icon: MessageSquare },
   { to: "/hospital/reset-password", label: "Reset password", icon: KeyRound },
 ];
@@ -36,6 +37,10 @@ export default function HospitalLayout() {
       document.body.style.overflow = "";
     };
   }, [isLg, mobileOpen]);
+
+  const navLinks = roles.includes("hospital_admin") || roles.includes("admin")
+    ? links
+    : links.filter((l) => l.to !== "/hospital/staff");
 
   return (
     <div className="min-h-screen min-h-[100dvh] bg-background">
@@ -102,7 +107,7 @@ export default function HospitalLayout() {
           )}
         >
           <nav className="space-y-0.5">
-            {links.map((l) => (
+            {navLinks.map((l) => (
               <NavLink key={l.to} to={l.to} end={l.end} onClick={() => setMobileOpen(false)}
                 className={({ isActive }) => cn("flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium",
                   isActive ? "bg-secondary text-primary border-l-4 border-accent" : "text-foreground hover:bg-secondary/60")}>

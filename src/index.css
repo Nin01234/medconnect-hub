@@ -75,7 +75,7 @@
     --secondary: 150 20% 18%;
     --secondary-foreground: 40 33% 96%;
     --muted: 150 18% 16%;
-    --muted-foreground: 150 10% 65%;
+    --muted-foreground: 150 12% 76%;
     --accent: 44 92% 55%;
     --accent-foreground: 150 30% 12%;
     --destructive: 0 70% 50%;
@@ -83,17 +83,32 @@
     --border: 150 18% 20%;
     --input: 150 18% 20%;
     --ring: 145 55% 45%;
+    --gradient-subtle: linear-gradient(180deg, hsl(150 24% 9%) 0%, hsl(150 23% 7%) 100%);
+    --shadow-card: 0 1px 2px hsl(150 20% 4% / 0.55), 0 6px 20px hsl(150 20% 3% / 0.45);
+    --shadow-elevated: 0 10px 36px hsl(150 25% 2% / 0.65);
   }
 }
 
 @layer base {
   * { @apply border-border; }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-family: "Plus Jakarta Sans", "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
     font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  h1, h2, h3, .font-display { font-family: 'Fraunces', Georgia, serif; letter-spacing: -0.02em; }
+  button, input, select, textarea {
+    font: inherit;
+  }
+  h1, h2, h3, .font-display {
+    font-family: "Fraunces", "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", Georgia, serif;
+    letter-spacing: -0.02em;
+  }
 }
 
 @layer utilities {

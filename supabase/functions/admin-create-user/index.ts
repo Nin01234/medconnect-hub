@@ -48,15 +48,21 @@ Deno.serve(async (req) => {
     const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
     const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // Verify caller is admin
+    // Verify caller role
     const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
     const { data: userData, error: userErr } = await userClient.auth.getUser();
     if (userErr || !userData.user?.id) return json({ error: 'Unauthorized: invalid or expired token' }, 401);
     const callerId = userData.user.id;
 
     const admin = createClient(SUPABASE_URL, SERVICE);
-    const { data: roleRow } = await admin.from('user_roles').select('role').eq('user_id', callerId).eq('role', 'admin').maybeSingle();
-    if (!roleRow) return json({ error: 'Forbidden: admin role required' }, 403);
+    const [{ data: roleRows }, { data: callerProfile }] = await Promise.all([
+      admin.from('user_roles').select('role').eq('user_id', callerId),
+      admin.from('profiles').select('hospital_id').eq('id', callerId).maybeSingle(),
+    ]);
+    const callerRoles = new Set((roleRows ?? []).map((r) => r.role));
+    const isAdmin = callerRoles.has('admin');
+    const isHospitalAdmin = callerRoles.has('hospital_admin');
+    if (!isAdmin && !isHospitalAdmin) return json({ error: 'Forbidden: admin role required' }, 403);
 
     const body = (await req.json()) as Payload;
     if (!body.email || !body.password || !body.full_name || !body.role) {
@@ -97,6 +103,15 @@ Deno.serve(async (req) => {
     }
     if (body.clinic_id && !UUID_RE.test(body.clinic_id)) return fail('Invalid clinic reference');
     if (body.hospital_id && !UUID_RE.test(body.hospital_id)) return fail('Invalid hospital reference');
+
+    if (isHospitalAdmin) {
+      const callerHospitalId = callerProfile?.hospital_id ?? null;
+      if (!callerHospitalId) return fail('Hospital admin must belong to a hospital', 403);
+      if (body.role !== 'hospital_staff') return fail('Hospital admins can only create hospital staff', 403);
+      if (body.new_hospital || body.new_clinic || body.clinic_id) return fail('Hospital admins cannot create organizations', 403);
+      if (body.hospital_id && body.hospital_id !== callerHospitalId) return fail('Hospital admins can only create staff in their own hospital', 403);
+      body.hospital_id = callerHospitalId;
+    }
 
     // Resolve clinic
     let clinic_id = body.clinic_id ?? null;
