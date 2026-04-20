@@ -10,18 +10,41 @@ export const LIMITS = {
   message: 8000,
   passwordMax: 128,
   departments: 20,
+  username: 30,
 } as const;
 
 const genderEnum = z.enum(["male", "female", "other"]);
 const urgencyEnum = z.enum(["low", "medium", "high", "critical"]);
 
+const usernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(3)
+  .max(LIMITS.username)
+  .regex(/^[a-z0-9][a-z0-9._-]{1,28}[a-z0-9]$/, "Username can only use lowercase letters, numbers, dot, dash, and underscore");
+
 export const authSignInSchema = z.object({
-  email: z.string().trim().toLowerCase().email().max(LIMITS.email),
+  identifier: z.string().trim().toLowerCase().min(3).max(LIMITS.email),
   password: z.string().min(6).max(LIMITS.passwordMax),
+}).superRefine((data, ctx) => {
+  const isEmail = data.identifier.includes("@");
+  if (isEmail) {
+    const parsed = z.string().email().max(LIMITS.email).safeParse(data.identifier);
+    if (!parsed.success) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter a valid email" });
+    }
+    return;
+  }
+  const parsed = usernameSchema.safeParse(data.identifier);
+  if (!parsed.success) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter a valid username" });
+  }
 });
 
 export const authSignUpSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(LIMITS.email),
+  username: usernameSchema,
   password: z.string().min(6).max(LIMITS.passwordMax),
   fullName: z.string().trim().min(1).max(LIMITS.name),
   phone: z.string().trim().max(LIMITS.phone).optional().or(z.literal("")),
@@ -88,7 +111,8 @@ const newOrgSchema = z.object({
 export const adminCreateUserSchema = z
   .object({
     full_name: z.string().trim().min(1).max(LIMITS.name),
-    email: z.string().trim().toLowerCase().email().max(LIMITS.email),
+    email: z.union([z.literal(""), z.string().trim().toLowerCase().email().max(LIMITS.email)]),
+    username: usernameSchema,
     phone: z.string().trim().max(LIMITS.phone).optional().or(z.literal("")),
     password: z.string().min(6).max(LIMITS.passwordMax),
     role: z.enum(["clinic_user", "hospital_admin", "hospital_staff", "admin"]),
@@ -120,7 +144,8 @@ export const adminCreateUserSchema = z
 export const adminEditUserSchema = z
   .object({
     full_name: z.string().trim().min(1).max(LIMITS.name),
-    email: z.string().trim().toLowerCase().email().max(LIMITS.email),
+    email: z.union([z.literal(""), z.string().trim().toLowerCase().email().max(LIMITS.email)]),
+    username: usernameSchema,
     phone: z.string().trim().max(LIMITS.phone).optional().or(z.literal("")),
     role: z.enum(["clinic_user", "hospital_admin", "hospital_staff", "admin"]),
     status: z.enum(["pending_approval", "active", "rejected", "suspended"]),

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,7 @@ import { sanitizeOptionalText, sanitizeText } from "@/lib/sanitize";
 type UserStatus = "pending_approval" | "active" | "rejected" | "suspended";
 
 interface UserRow {
-  id: string; unique_id: string | null; full_name: string | null; email: string | null; phone: string | null; status: string;
+  id: string; unique_id: string | null; full_name: string | null; email: string | null; username: string | null; phone: string | null; status: string;
   clinic_id: string | null; hospital_id: string | null;
   clinics: { name: string; region: string | null; city: string | null } | null;
   hospitals: { name: string; region: string | null; city: string | null } | null;
@@ -33,7 +32,6 @@ const CLINIC_TYPES = ["CHPS","Polyclinic","Private Clinic","Health Center","Othe
 const HOSPITAL_TYPES = ["District","Regional","Teaching","Military","Private","Other"];
 
 export default function UsersPage() {
-  const navigate = useNavigate();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [clinics, setClinics] = useState<OrgRef[]>([]);
   const [hospitals, setHospitals] = useState<OrgRef[]>([]);
@@ -48,6 +46,7 @@ export default function UsersPage() {
   const [edit, setEdit] = useState({
     full_name: "",
     email: "",
+    username: "",
     phone: "",
     role: "clinic_user",
     status: "active" as UserStatus,
@@ -126,6 +125,7 @@ export default function UsersPage() {
           term === "" ||
           (u.full_name ?? "").toLowerCase().includes(term) ||
           (u.email ?? "").toLowerCase().includes(term) ||
+          (u.username ?? "").toLowerCase().includes(term) ||
           (u.unique_id ?? "").toLowerCase().includes(term) ||
           (u.phone ?? "").toLowerCase().includes(term)
         )
@@ -139,7 +139,7 @@ export default function UsersPage() {
 
   // Form state
   const [form, setForm] = useState({
-    full_name: "", email: "", phone: "", password: "", role: "clinic_user",
+    full_name: "", email: "", username: "", phone: "", password: "", role: "clinic_user",
     status: "active" as UserStatus,
     org_mode: "existing" as "existing" | "new", clinic_id: "", hospital_id: "",
     new_org: { name: "", type: "Other", region: "", city: "", address: "", gps_code: "", contact: "", email: "", ownership_type: "Private", departments: [] as string[] },
@@ -149,6 +149,7 @@ export default function UsersPage() {
     const validated = adminCreateUserSchema.safeParse({
       full_name: form.full_name,
       email: form.email,
+      username: form.username,
       phone: form.phone,
       password: form.password,
       role: form.role,
@@ -181,12 +182,14 @@ export default function UsersPage() {
       const v = validated.data;
       const payload: Record<string, unknown> = {
         full_name: sanitizeText(v.full_name, 200),
-        email: sanitizeText(v.email, 320).toLowerCase(),
+        username: sanitizeText(v.username, 30).toLowerCase(),
         phone: sanitizeOptionalText(v.phone || undefined, 40) ?? undefined,
         password: v.password,
         role: v.role,
         status: v.status,
       };
+      const normalizedEmail = sanitizeOptionalText(v.email || undefined, 320)?.toLowerCase();
+      if (normalizedEmail) payload.email = normalizedEmail;
       if (v.role === "clinic_user") {
         if (v.org_mode === "existing") payload.clinic_id = v.clinic_id;
         else if (v.new_org) {
@@ -223,7 +226,7 @@ export default function UsersPage() {
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
       toast.success("User created");
       setOpen(false);
-      setForm({ full_name: "", email: "", phone: "", password: "", role: "clinic_user", status: "active", org_mode: "existing", clinic_id: "", hospital_id: "", new_org: { name: "", type: "Other", region: "", city: "", address: "", gps_code: "", contact: "", email: "", ownership_type: "Private", departments: [] } });
+      setForm({ full_name: "", email: "", username: "", phone: "", password: "", role: "clinic_user", status: "active", org_mode: "existing", clinic_id: "", hospital_id: "", new_org: { name: "", type: "Other", region: "", city: "", address: "", gps_code: "", contact: "", email: "", ownership_type: "Private", departments: [] } });
       load();
     } catch (e) {
       toast.error(await safeFunctionError(e));
@@ -241,6 +244,7 @@ export default function UsersPage() {
     setEdit({
       full_name: u.full_name ?? "",
       email: u.email ?? "",
+      username: u.username ?? "",
       phone: u.phone ?? "",
       role: u.user_roles[0]?.role ?? "clinic_user",
       status: (u.status as UserStatus) ?? "active",
@@ -255,6 +259,7 @@ export default function UsersPage() {
     const parsed = adminEditUserSchema.safeParse({
       full_name: edit.full_name,
       email: edit.email,
+      username: edit.username,
       phone: edit.phone,
       role: edit.role,
       status: edit.status,
@@ -272,12 +277,13 @@ export default function UsersPage() {
         action: "update_user",
         user_id: selected.id,
         full_name: sanitizeText(ed.full_name, 200),
-        email: sanitizeText(ed.email, 320).toLowerCase(),
+        username: sanitizeText(ed.username, 30).toLowerCase(),
         phone: sanitizeOptionalText(ed.phone || undefined, 40) ?? undefined,
         role: ed.role,
         status: ed.status,
         clinic_id: ed.role === "clinic_user" ? (ed.clinic_id || null) : null,
         hospital_id: ed.role === "hospital_admin" || ed.role === "hospital_staff" ? (ed.hospital_id || null) : null,
+        email: sanitizeOptionalText(ed.email || undefined, 320)?.toLowerCase(),
       });
       toast.success("User updated");
       setEditOpen(false);
@@ -369,9 +375,10 @@ export default function UsersPage() {
             <div className="space-y-4">
               <Section title="Account">
                 <Two><F label="Full name *"><Input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} /></F>
-                <F label="Email *"><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></F></Two>
-                <Two><F label="Phone"><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></F>
-                <F label="Password * (min 6)"><Input type="password" autoComplete="new-password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} /></F></Two>
+                <F label="Email (optional)"><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></F></Two>
+                <Two><F label="Username *"><Input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase() }))} placeholder="lowercase letters, numbers, . _ -" /></F>
+                <F label="Phone"><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></F></Two>
+                <F label="Password * (min 6)"><Input type="password" autoComplete="new-password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} /></F>
                 <Two>
                   <F label="Role *">
                     <Select value={form.role} onValueChange={v => setForm(f => ({ ...f, role: v, org_mode: "existing" }))}>
@@ -453,7 +460,7 @@ export default function UsersPage() {
                 </Section>
               )}
 
-              <Button onClick={submit} variant="hero" className="w-full" disabled={busy || !form.full_name || !form.email || !form.password}>
+              <Button onClick={submit} variant="hero" className="w-full" disabled={busy || !form.full_name || !form.username || !form.password}>
                 {busy ? "Creating…" : "Create user"}
               </Button>
             </div>
@@ -468,7 +475,7 @@ export default function UsersPage() {
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        <Input placeholder="Search name, email, account ID, or phone" value={q} onChange={e => setQ(e.target.value)} className="max-w-sm" />
+        <Input placeholder="Search name, username, email, account ID, or phone" value={q} onChange={e => setQ(e.target.value)} className="max-w-sm" />
         <Select value={filterRole} onValueChange={setFilterRole}>
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -495,7 +502,7 @@ export default function UsersPage() {
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b text-xs uppercase tracking-wider text-muted-foreground">
-              <tr><th className="text-left px-5 py-3">Name</th><th className="text-left px-5 py-3">Account ID</th><th className="text-left px-5 py-3">Email</th><th className="text-left px-5 py-3">Role</th><th className="text-left px-5 py-3">Organization</th><th className="text-left px-5 py-3">Location</th><th className="text-left px-5 py-3">Status</th><th className="text-left px-5 py-3">Actions</th></tr>
+              <tr><th className="text-left px-5 py-3">Name</th><th className="text-left px-5 py-3">Account ID</th><th className="text-left px-5 py-3">Username</th><th className="text-left px-5 py-3">Email</th><th className="text-left px-5 py-3">Role</th><th className="text-left px-5 py-3">Organization</th><th className="text-left px-5 py-3">Location</th><th className="text-left px-5 py-3">Status</th><th className="text-left px-5 py-3">Actions</th></tr>
             </thead>
             <tbody>
               {filtered.map(u => {
@@ -505,6 +512,7 @@ export default function UsersPage() {
                   <tr key={u.id} className="border-b hover:bg-secondary/30">
                     <td className="px-5 py-3 font-medium">{u.full_name ?? "—"}</td>
                     <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{u.unique_id ?? "—"}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{u.username ?? "—"}</td>
                     <td className="px-5 py-3 text-muted-foreground">{u.email}</td>
                     <td className="px-5 py-3"><span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary capitalize">{u.user_roles[0]?.role.replace(/_/g," ") ?? "—"}</span></td>
                     <td className="px-5 py-3">{org}</td>
@@ -541,7 +549,7 @@ export default function UsersPage() {
                   </tr>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={8} className="text-center py-10 text-muted-foreground">No users.</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={9} className="text-center py-10 text-muted-foreground">No users.</td></tr>}
             </tbody>
           </table>
         </CardContent>
@@ -555,7 +563,8 @@ export default function UsersPage() {
           </DialogHeader>
           <div className="space-y-3">
             <F label="Full name"><Input value={edit.full_name} onChange={(e) => setEdit((x) => ({ ...x, full_name: e.target.value }))} /></F>
-            <F label="Email"><Input type="email" value={edit.email} onChange={(e) => setEdit((x) => ({ ...x, email: e.target.value }))} /></F>
+            <F label="Email (optional)"><Input type="email" value={edit.email} onChange={(e) => setEdit((x) => ({ ...x, email: e.target.value }))} /></F>
+            <F label="Username"><Input value={edit.username} onChange={(e) => setEdit((x) => ({ ...x, username: e.target.value.toLowerCase() }))} placeholder="lowercase letters, numbers, . _ -" /></F>
             <F label="Phone"><Input value={edit.phone} onChange={(e) => setEdit((x) => ({ ...x, phone: e.target.value }))} /></F>
             <Two>
               <F label="Role">
@@ -619,7 +628,7 @@ export default function UsersPage() {
               disabled={
                 busy ||
                 !edit.full_name ||
-                !edit.email ||
+                !edit.username ||
                 (edit.role === "clinic_user" && !edit.clinic_id) ||
                 ((edit.role === "hospital_admin" || edit.role === "hospital_staff") && !edit.hospital_id)
               }

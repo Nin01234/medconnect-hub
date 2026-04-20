@@ -6,6 +6,7 @@ export const referralKeys = {
   hospitalRoot: (hospitalId: string) => [...referralKeys.all, "hospital", hospitalId] as const,
   hospitalDashboard: (hospitalId: string) => [...referralKeys.hospitalRoot(hospitalId), "dashboard"] as const,
   hospitalInbox: (hospitalId: string) => [...referralKeys.hospitalRoot(hospitalId), "inbox"] as const,
+  hospitalAssigned: (hospitalId: string) => [...referralKeys.hospitalRoot(hospitalId), "assigned"] as const,
   /** Clinic dashboard list. */
   clinicRoot: (clinicId: string) => [...referralKeys.all, "clinic", clinicId] as const,
   clinicDashboard: (clinicId: string) => [...referralKeys.clinicRoot(clinicId), "dashboard"] as const,

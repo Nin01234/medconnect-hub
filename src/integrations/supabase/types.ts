@@ -142,6 +142,41 @@ export type Database = {
           },
         ]
       }
+      departments: {
+        Row: {
+          created_at: string
+          hospital_id: string
+          id: string
+          name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          hospital_id: string
+          id?: string
+          name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          hospital_id?: string
+          id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "departments_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hospitals: {
         Row: {
           address: string | null
@@ -202,6 +237,7 @@ export type Database = {
           status: string
           unique_id: string | null
           updated_at: string
+          username: string | null
         }
         Insert: {
           clinic_id?: string | null
@@ -214,6 +250,7 @@ export type Database = {
           status?: string
           unique_id?: string | null
           updated_at?: string
+          username?: string | null
         }
         Update: {
           clinic_id?: string | null
@@ -226,6 +263,7 @@ export type Database = {
           status?: string
           unique_id?: string | null
           updated_at?: string
+          username?: string | null
         }
         Relationships: [
           {
@@ -357,11 +395,13 @@ export type Database = {
       }
       referrals: {
         Row: {
+          assigned_department: string | null
           assigned_doctor_id: string | null
           clinic_id: string | null
           created_at: string
           created_by: string | null
           diagnosis: string | null
+          department_id: string | null
           hospital_feedback: string | null
           hospital_id: string | null
           id: string
@@ -386,11 +426,13 @@ export type Database = {
           urgency_level: Database["public"]["Enums"]["urgency_level"]
         }
         Insert: {
+          assigned_department?: string | null
           assigned_doctor_id?: string | null
           clinic_id?: string | null
           created_at?: string
           created_by?: string | null
           diagnosis?: string | null
+          department_id?: string | null
           hospital_feedback?: string | null
           hospital_id?: string | null
           id?: string
@@ -415,11 +457,13 @@ export type Database = {
           urgency_level?: Database["public"]["Enums"]["urgency_level"]
         }
         Update: {
+          assigned_department?: string | null
           assigned_doctor_id?: string | null
           clinic_id?: string | null
           created_at?: string
           created_by?: string | null
           diagnosis?: string | null
+          department_id?: string | null
           hospital_feedback?: string | null
           hospital_id?: string | null
           id?: string
@@ -456,6 +500,13 @@ export type Database = {
             columns: ["clinic_id"]
             isOneToOne: false
             referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
           {
@@ -509,6 +560,12 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      resolve_login_identifier: {
+        Args: {
+          p_identifier: string
+        }
+        Returns: string | null
       }
       upsert_patient_for_clinic: {
         Args: {

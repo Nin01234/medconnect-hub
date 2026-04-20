@@ -13,7 +13,9 @@ import { safeClientError } from "@/lib/safeError";
 
 export default function Auth() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [identifier, setIdentifier] = useState("");
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -34,6 +36,7 @@ export default function Auth() {
       if (mode === "signup") {
         const parsed = authSignUpSchema.safeParse({
           email,
+          username,
           password,
           fullName,
           phone,
@@ -51,6 +54,7 @@ export default function Auth() {
           options: {
             emailRedirectTo: `${window.location.origin}/`,
             data: {
+              username: sanitizeText(v.username, LIMITS.username).toLowerCase(),
               full_name: sanitizeText(v.fullName, LIMITS.name),
               phone: v.phone ? sanitizeText(v.phone, LIMITS.phone) : undefined,
               org_name: sanitizeText(v.orgName, LIMITS.name),
@@ -69,16 +73,24 @@ export default function Auth() {
         setPassword("");
         return;
       } else {
-        const parsed = authSignInSchema.safeParse({ email, password });
+        const parsed = authSignInSchema.safeParse({ identifier, password });
         if (!parsed.success) {
           toast.error(parsed.error.issues[0]?.message ?? "Check your input.");
           return;
         }
+        let emailForLogin = parsed.data.identifier;
+        if (!emailForLogin.includes("@")) {
+          const { data, error } = await supabase.rpc("resolve_login_identifier", {
+            p_identifier: emailForLogin,
+          });
+          if (error || !data) throw new Error("Invalid login credentials");
+          emailForLogin = data;
+        }
         const { error } = await supabase.auth.signInWithPassword({
-          email: parsed.data.email,
+          email: emailForLogin,
           password: parsed.data.password,
         });
-        if (error) throw error;
+        if (error) throw new Error("Invalid login credentials");
         toast.success("Welcome back");
       }
       nav("/portal", { replace: true });
@@ -130,6 +142,16 @@ export default function Auth() {
                   </div>
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
+                      <Label htmlFor="username">Username</Label>
+                      <Input
+                        id="username"
+                        required
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                        placeholder="e.g. nino_admin"
+                      />
+                    </div>
+                    <div>
                       <Label htmlFor="org-name">Organization name</Label>
                       <Input id="org-name" required value={orgName} onChange={(e) => setOrgName(e.target.value)} />
                     </div>
@@ -140,16 +162,35 @@ export default function Auth() {
                   </div>
                 </>
               )}
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div className={mode === "signin" ? "sm:col-span-2" : ""}>
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              {mode === "signin" ? (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="identifier">Email or username</Label>
+                    <Input
+                      id="identifier"
+                      required
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      placeholder="you@example.com or username"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="pw">Password</Label>
+                    <Input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                  </div>
                 </div>
-                <div className={mode === "signin" ? "sm:col-span-2" : ""}>
-                  <Label htmlFor="pw">Password</Label>
-                  <Input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="email">Email</Label>
+                    <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label htmlFor="pw">Password</Label>
+                    <Input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                  </div>
                 </div>
-              </div>
+              )}
               <Button type="submit" variant="hero" className="w-full" size="lg" disabled={busy}>
                 {busy ? "Please wait..." : mode === "signin" ? "Sign in to portal" : "Submit signup request"}
               </Button>

@@ -26,7 +26,7 @@ const HospitalDashboard = lazy(() => import("./pages/hospital/HospitalDashboard"
 const HospitalInbox = lazy(() => import("./pages/hospital/HospitalInbox"));
 const AssignedCases = lazy(() => import("./pages/hospital/AssignedCases"));
 const FeedbackCenter = lazy(() => import("./pages/hospital/FeedbackCenter"));
-const Doctors = lazy(() => import("./pages/hospital/Doctors"));
+const Departments = lazy(() => import("./pages/hospital/Departments"));
 const StaffManagement = lazy(() => import("./pages/hospital/StaffManagement"));
 const HospitalMessages = lazy(() => import("./pages/hospital/HospitalMessages"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -84,7 +84,7 @@ const App = () => (
                   <Route path="patients/:patientId" element={<PatientReferralHistory portal="hospital" />} />
                   <Route path="assigned" element={<AssignedCases />} />
                   <Route path="feedback" element={<FeedbackCenter />} />
-                  <Route path="doctors" element={<Doctors />} />
+                  <Route path="departments" element={<Departments />} />
                   <Route path="staff" element={<StaffManagement />} />
                   <Route path="messages" element={<HospitalMessages />} />
                   <Route path="reset-password" element={<PortalResetPassword />} />

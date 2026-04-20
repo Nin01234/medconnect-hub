@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { KeyRound, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { resetPasswordSchema } from "@/lib/validation";
+import { adminCreateUserSchema, adminEditUserSchema, resetPasswordSchema } from "@/lib/validation";
 import { sanitizeOptionalText, sanitizeText } from "@/lib/sanitize";
 import { safeClientError, safeFunctionError } from "@/lib/safeError";
 
@@ -19,13 +19,12 @@ interface StaffRow {
   id: string;
   full_name: string | null;
   email: string | null;
+  username: string | null;
   phone: string | null;
   status: string;
   unique_id: string | null;
   user_roles: { role: string }[];
 }
-
-const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function StaffManagement() {
   const { profile, roles } = useAuth();
@@ -41,6 +40,7 @@ export default function StaffManagement() {
   const [edit, setEdit] = useState({
     full_name: "",
     email: "",
+    username: "",
     phone: "",
     status: "active" as StaffStatus,
   });
@@ -48,6 +48,7 @@ export default function StaffManagement() {
   const [form, setForm] = useState({
     full_name: "",
     email: "",
+    username: "",
     phone: "",
     password: "",
     status: "active" as StaffStatus,
@@ -74,7 +75,7 @@ export default function StaffManagement() {
     if (!profile?.hospital_id) return;
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, full_name, email, phone, status, unique_id, user_roles!user_roles_user_id_fkey(role)")
+      .select("id, full_name, email, username, phone, status, unique_id, user_roles!user_roles_user_id_fkey(role)")
       .eq("hospital_id", profile.hospital_id)
       .order("created_at", { ascending: false });
     if (error) {
@@ -93,41 +94,51 @@ export default function StaffManagement() {
     const term = q.trim().toLowerCase();
     if (!term) return rows;
     return rows.filter((u) =>
-      [u.full_name ?? "", u.email ?? "", u.phone ?? "", u.unique_id ?? ""].some((v) => v.toLowerCase().includes(term)),
+      [u.full_name ?? "", u.email ?? "", u.username ?? "", u.phone ?? "", u.unique_id ?? ""].some((v) =>
+        v.toLowerCase().includes(term),
+      ),
     );
   }, [rows, q]);
 
   const createStaff = async () => {
     if (!profile?.hospital_id) return;
-    if (!form.full_name.trim() || !form.email.trim() || !form.password) {
-      toast.error("Full name, email, and password are required.");
-      return;
-    }
-    if (!VALID_EMAIL.test(form.email.trim().toLowerCase())) {
-      toast.error("Please provide a valid email.");
-      return;
-    }
-    if (form.password.length < 6) {
-      toast.error("Password must be at least 6 characters.");
+    const validated = adminCreateUserSchema.safeParse({
+      full_name: form.full_name,
+      email: form.email,
+      username: form.username,
+      phone: form.phone,
+      password: form.password,
+      role: "hospital_staff",
+      status: form.status,
+      org_mode: "existing",
+      clinic_id: "",
+      hospital_id: profile.hospital_id,
+      new_org: undefined,
+    });
+    if (!validated.success) {
+      toast.error(validated.error.issues[0]?.message ?? "Check your input.");
       return;
     }
 
     setBusy(true);
     try {
+      const v = validated.data;
       const payload = {
-        full_name: sanitizeText(form.full_name, 200),
-        email: sanitizeText(form.email, 320).toLowerCase(),
-        phone: sanitizeOptionalText(form.phone || undefined, 40) ?? undefined,
-        password: form.password,
+        full_name: sanitizeText(v.full_name, 200),
+        username: sanitizeText(v.username, 30).toLowerCase(),
+        phone: sanitizeOptionalText(v.phone || undefined, 40) ?? undefined,
+        password: v.password,
         role: "hospital_staff",
-        status: form.status,
+        status: v.status,
         hospital_id: profile.hospital_id,
       };
+      const normalizedEmail = sanitizeOptionalText(v.email || undefined, 320)?.toLowerCase();
+      if (normalizedEmail) payload.email = normalizedEmail;
       const { data, error } = await invokeFn("admin-create-user", payload);
       if (error) throw error;
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
       toast.success("Hospital staff account created");
-      setForm({ full_name: "", email: "", phone: "", password: "", status: "active" });
+      setForm({ full_name: "", email: "", username: "", phone: "", password: "", status: "active" });
       setOpen(false);
       await load();
     } catch (e) {
@@ -208,6 +219,7 @@ export default function StaffManagement() {
     setEdit({
       full_name: u.full_name ?? "",
       email: u.email ?? "",
+      username: u.username ?? "",
       phone: u.phone ?? "",
       status: (u.status as StaffStatus) ?? "active",
     });
@@ -216,23 +228,31 @@ export default function StaffManagement() {
 
   const saveEdit = async () => {
     if (!selected) return;
-    if (!edit.full_name.trim() || !edit.email.trim()) {
-      toast.error("Full name and email are required.");
-      return;
-    }
-    if (!VALID_EMAIL.test(edit.email.trim().toLowerCase())) {
-      toast.error("Please provide a valid email.");
+    const parsed = adminEditUserSchema.safeParse({
+      full_name: edit.full_name,
+      email: edit.email,
+      username: edit.username,
+      phone: edit.phone,
+      role: "hospital_staff",
+      status: edit.status,
+      clinic_id: "",
+      hospital_id: profile?.hospital_id ?? "",
+    });
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? "Check your input.");
       return;
     }
     setBusy(true);
     try {
+      const ed = parsed.data;
       const { data, error } = await invokeFn("admin-manage-user", {
         action: "update_user",
         user_id: selected.id,
-        full_name: sanitizeText(edit.full_name, 200),
-        email: sanitizeText(edit.email, 320).toLowerCase(),
-        phone: sanitizeOptionalText(edit.phone || undefined, 40) ?? undefined,
-        status: edit.status,
+        full_name: sanitizeText(ed.full_name, 200),
+        username: sanitizeText(ed.username, 30).toLowerCase(),
+        phone: sanitizeOptionalText(ed.phone || undefined, 40) ?? undefined,
+        email: sanitizeOptionalText(ed.email || undefined, 320)?.toLowerCase(),
+        status: ed.status,
         role: "hospital_staff",
       });
       if (error) throw error;
@@ -283,8 +303,16 @@ export default function StaffManagement() {
                 <Input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
               </div>
               <div>
-                <Label>Email *</Label>
+                <Label>Email (optional)</Label>
                 <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+              </div>
+              <div>
+                <Label>Username *</Label>
+                <Input
+                  value={form.username}
+                  onChange={(e) => setForm((f) => ({ ...f, username: e.target.value.toLowerCase() }))}
+                  placeholder="lowercase letters, numbers, . _ -"
+                />
               </div>
               <div>
                 <Label>Phone</Label>
@@ -321,7 +349,7 @@ export default function StaffManagement() {
       </div>
 
       <Input
-        placeholder="Search by name, email, phone, or account ID"
+        placeholder="Search by name, username, email, phone, or account ID"
         value={q}
         onChange={(e) => setQ(e.target.value)}
         className="max-w-sm"
@@ -334,6 +362,7 @@ export default function StaffManagement() {
               <tr>
                 <th className="text-left px-5 py-3">Name</th>
                 <th className="text-left px-5 py-3">Account ID</th>
+                <th className="text-left px-5 py-3">Username</th>
                 <th className="text-left px-5 py-3">Email</th>
                 <th className="text-left px-5 py-3">Phone</th>
                 <th className="text-left px-5 py-3">Status</th>
@@ -345,6 +374,7 @@ export default function StaffManagement() {
                 <tr key={u.id} className="border-b hover:bg-secondary/30">
                   <td className="px-5 py-3 font-medium">{u.full_name ?? "—"}</td>
                   <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{u.unique_id ?? "—"}</td>
+                  <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{u.username ?? "—"}</td>
                   <td className="px-5 py-3 text-muted-foreground">{u.email ?? "—"}</td>
                   <td className="px-5 py-3 text-muted-foreground">{u.phone ?? "—"}</td>
                   <td className="px-5 py-3">
@@ -399,7 +429,7 @@ export default function StaffManagement() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-10 text-muted-foreground">
+                  <td colSpan={7} className="text-center py-10 text-muted-foreground">
                     No hospital staff found.
                   </td>
                 </tr>
@@ -439,8 +469,16 @@ export default function StaffManagement() {
               <Input value={edit.full_name} onChange={(e) => setEdit((x) => ({ ...x, full_name: e.target.value }))} />
             </div>
             <div>
-              <Label>Email *</Label>
+              <Label>Email (optional)</Label>
               <Input type="email" value={edit.email} onChange={(e) => setEdit((x) => ({ ...x, email: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Username *</Label>
+              <Input
+                value={edit.username}
+                onChange={(e) => setEdit((x) => ({ ...x, username: e.target.value.toLowerCase() }))}
+                placeholder="lowercase letters, numbers, . _ -"
+              />
             </div>
             <div>
               <Label>Phone</Label>

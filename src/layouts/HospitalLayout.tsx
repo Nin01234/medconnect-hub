@@ -1,7 +1,7 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Inbox, ClipboardList, MessageSquare, LogOut, Activity, Users, Menu, MessageCircleHeart, PanelLeft, PanelLeftClose, KeyRound } from "lucide-react";
+import { LayoutDashboard, Inbox, ClipboardList, MessageSquare, LogOut, Activity, Users, Menu, MessageCircleHeart, PanelLeft, PanelLeftClose, KeyRound, Building2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -13,7 +13,7 @@ const links = [
   { to: "/hospital/inbox", label: "Referral Inbox", icon: Inbox },
   { to: "/hospital/assigned", label: "Assigned Cases", icon: ClipboardList },
   { to: "/hospital/feedback", label: "Feedback Center", icon: MessageCircleHeart },
-  { to: "/hospital/doctors", label: "Doctors", icon: Users },
+  { to: "/hospital/departments", label: "Departments", icon: Building2 },
   { to: "/hospital/staff", label: "Staff Accounts", icon: Users },
   { to: "/hospital/messages", label: "Messages", icon: MessageSquare },
   { to: "/hospital/reset-password", label: "Reset password", icon: KeyRound },

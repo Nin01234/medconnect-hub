@@ -6,20 +6,41 @@ const corsHeaders = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{1,28}[a-z0-9]$/;
 const ALLOWED_ROLES = new Set(["clinic_user", "hospital_admin", "hospital_staff", "admin"]);
 const ALLOWED_STATUS = new Set(["pending_approval", "active", "rejected", "suspended"]);
+const INVISIBLE_AND_BIDI = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g;
+
+function stripHtmlLikeTags(s: string): string {
+  let out = s;
+  let prev = "";
+  while (out !== prev) {
+    prev = out;
+    out = out.replace(/<[^>]{0,2000}?>/g, "");
+  }
+  return out;
+}
 
 function cap(s: string, max: number): string {
-  return s.replace(/\0/g, '').trim().slice(0, max);
+  return stripHtmlLikeTags(s)
+    .replace(/\0/g, "")
+    .replace(INVISIBLE_AND_BIDI, "")
+    .trim()
+    .slice(0, max);
 }
 
 function isEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 320;
 }
 
+function fallbackEmailFromUsername(username: string): string {
+  return `${username}@user.medconnect.local`;
+}
+
 interface Payload {
   full_name: string;
-  email: string;
+  email?: string;
+  username: string;
   phone?: string;
   password: string;
   role: 'clinic_user' | 'hospital_admin' | 'hospital_staff' | 'admin';
@@ -65,16 +86,18 @@ Deno.serve(async (req) => {
     if (!isAdmin && !isHospitalAdmin) return json({ error: 'Forbidden: admin role required' }, 403);
 
     const body = (await req.json()) as Payload;
-    if (!body.email || !body.password || !body.full_name || !body.role) {
+    if (!body.username || !body.password || !body.full_name || !body.role) {
       return fail('Missing required fields');
     }
     if (!ALLOWED_ROLES.has(body.role)) return fail("Invalid role");
     if (body.status && !ALLOWED_STATUS.has(body.status)) return fail("Invalid status");
-    body.email = cap(body.email.toLowerCase(), 320);
+    if (body.email) body.email = cap(body.email.toLowerCase(), 320);
+    body.username = cap(body.username.toLowerCase(), 30);
     body.full_name = cap(body.full_name, 200);
     body.password = body.password.length > 128 ? body.password.slice(0, 128) : body.password;
     if (body.phone) body.phone = cap(body.phone, 40);
-    if (!isEmail(body.email)) return fail('Invalid email');
+    if (body.email && !isEmail(body.email)) return fail('Invalid email');
+    if (!USERNAME_RE.test(body.username)) return fail('Invalid username');
     if (body.password.length < 6) return fail('Password too short');
     if (body.new_clinic) {
       body.new_clinic.name = cap(body.new_clinic.name, 200);
@@ -113,6 +136,8 @@ Deno.serve(async (req) => {
       body.hospital_id = callerHospitalId;
     }
 
+    const resolvedEmail = body.email || fallbackEmailFromUsername(body.username);
+
     // Resolve clinic
     let clinic_id = body.clinic_id ?? null;
     if (body.role === 'clinic_user' && !clinic_id && body.new_clinic) {
@@ -137,10 +162,10 @@ Deno.serve(async (req) => {
 
     // Create auth user (auto-confirmed)
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
-      email: body.email,
+      email: resolvedEmail,
       password: body.password,
       email_confirm: true,
-      user_metadata: { full_name: body.full_name, phone: body.phone },
+      user_metadata: { full_name: body.full_name, phone: body.phone, username: body.username },
     });
     if (createErr || !created.user) {
       console.error(createErr);
@@ -150,13 +175,19 @@ Deno.serve(async (req) => {
     const newUserId = created.user.id;
 
     // Update profile (trigger created the row already)
-    await admin.from('profiles').update({
+    const { error: profileErr } = await admin.from('profiles').update({
       full_name: body.full_name,
       phone: body.phone,
+      username: body.username,
       status: body.status ?? 'active',
       clinic_id,
       hospital_id,
     }).eq('id', newUserId);
+    if (profileErr) {
+      console.error(profileErr);
+      await admin.auth.admin.deleteUser(newUserId);
+      return fail('Could not create user profile');
+    }
 
     // Replace default role
     await admin.from('user_roles').delete().eq('user_id', newUserId);
@@ -167,7 +198,7 @@ Deno.serve(async (req) => {
       action: 'create_user',
       entity_type: 'user',
       entity_id: newUserId,
-      metadata: { role: body.role, clinic_id, hospital_id },
+      metadata: { role: body.role, clinic_id, hospital_id, username: body.username },
     });
 
     return json({ ok: true, user_id: newUserId, clinic_id, hospital_id });

@@ -6,12 +6,28 @@ const corsHeaders = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{1,28}[a-z0-9]$/;
 const ALLOWED_ACTIONS = new Set(["approve_user", "update_user", "reset_password", "delete_user"]);
 const ALLOWED_ROLES = new Set(["clinic_user", "hospital_admin", "hospital_staff", "admin"]);
 const ALLOWED_STATUS = new Set(["pending_approval", "active", "rejected", "suspended"]);
+const INVISIBLE_AND_BIDI = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g;
+
+function stripHtmlLikeTags(s: string): string {
+  let out = s;
+  let prev = "";
+  while (out !== prev) {
+    prev = out;
+    out = out.replace(/<[^>]{0,2000}?>/g, "");
+  }
+  return out;
+}
 
 function cap(s: string, max: number): string {
-  return s.replace(/\0/g, "").trim().slice(0, max);
+  return stripHtmlLikeTags(s)
+    .replace(/\0/g, "")
+    .replace(INVISIBLE_AND_BIDI, "")
+    .trim()
+    .slice(0, max);
 }
 
 function isEmail(s: string): boolean {
@@ -25,6 +41,7 @@ interface Payload {
   user_id: string;
   full_name?: string;
   email?: string;
+  username?: string;
   phone?: string;
   role?: "clinic_user" | "hospital_admin" | "hospital_staff" | "admin";
   status?: "pending_approval" | "active" | "rejected" | "suspended";
@@ -68,6 +85,10 @@ Deno.serve(async (req) => {
     if (!ALLOWED_ACTIONS.has(body.action)) return fail("Invalid action");
     if (!UUID_RE.test(body.user_id)) return fail("Invalid user reference");
     if (body.full_name) body.full_name = cap(body.full_name, 200);
+    if (body.username !== undefined) {
+      body.username = cap(body.username.toLowerCase(), 30);
+      if (!USERNAME_RE.test(body.username)) return fail("Invalid username");
+    }
     if (body.phone) body.phone = cap(body.phone, 40);
     if (body.email) {
       body.email = cap(body.email.toLowerCase(), 320);
@@ -127,6 +148,7 @@ Deno.serve(async (req) => {
       const profileUpdate: Record<string, unknown> = {};
       if (body.full_name !== undefined) profileUpdate.full_name = body.full_name;
       if (body.email !== undefined) profileUpdate.email = body.email;
+      if (body.username !== undefined) profileUpdate.username = body.username;
       if (body.phone !== undefined) profileUpdate.phone = body.phone;
       if (body.status !== undefined) profileUpdate.status = body.status;
       if (body.role !== undefined) Object.assign(profileUpdate, profileOrgUpdate);
@@ -180,6 +202,7 @@ Deno.serve(async (req) => {
       metadata: {
         role: body.role,
         status: body.status,
+        username: body.username,
       },
     });
 

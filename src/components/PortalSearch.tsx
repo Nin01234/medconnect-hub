@@ -47,8 +47,6 @@ type ReferralHit = {
   clinics?: { name: string } | null;
 };
 
-type DoctorHit = { id: string; full_name: string; specialty: string | null; email: string | null; phone: string | null; unique_id: string | null };
-
 type AdminUserHit = {
   id: string;
   unique_id: string | null;
@@ -97,7 +95,7 @@ export function PortalSearch({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [referrals, setReferrals] = useState<ReferralHit[]>([]);
-  const [doctors, setDoctors] = useState<DoctorHit[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUserHit[]>([]);
   const [adminClinics, setAdminClinics] = useState<AdminClinicHit[]>([]);
   const [adminHospitals, setAdminHospitals] = useState<AdminHospitalHit[]>([]);
@@ -129,18 +127,18 @@ export function PortalSearch({
             .limit(500);
           if (!cancelled) setReferrals((data ?? []) as ReferralHit[]);
         } else if (variant === "hospital" && profile?.hospital_id) {
-          const [refRes, docRes] = await Promise.all([
+          const [refRes, departmentRes] = await Promise.all([
             supabase
               .from("referrals")
               .select("id, referral_number, patient_id, patient_name, status, clinics(name)")
               .eq("hospital_id", profile.hospital_id)
               .order("created_at", { ascending: false })
               .limit(500),
-            supabase.from("doctors").select("id, full_name, specialty, email, phone, unique_id").eq("hospital_id", profile.hospital_id).order("created_at", { ascending: false }),
+            supabase.from("departments").select("name").eq("hospital_id", profile.hospital_id).eq("status", "active").order("name"),
           ]);
           if (!cancelled) {
             setReferrals((refRes.data ?? []) as ReferralHit[]);
-            setDoctors((docRes.data ?? []) as DoctorHit[]);
+            setDepartments((departmentRes.data ?? []).map((d) => d.name));
           }
         } else if (variant === "admin") {
           const [u, c, h, a] = await Promise.all([
@@ -323,8 +321,8 @@ export function PortalSearch({
                 <CommandItem value="feedback" onSelect={() => go("/hospital/feedback")}>
                   <MessageCircleHeart className="mr-2 h-4 w-4" /> Feedback center
                 </CommandItem>
-                <CommandItem value="doctors roster" onSelect={() => go("/hospital/doctors")}>
-                  <Users className="mr-2 h-4 w-4" /> Doctors
+                <CommandItem value="hospital departments" onSelect={() => go("/hospital/departments")}>
+                  <Building2 className="mr-2 h-4 w-4" /> Departments
                 </CommandItem>
                 <CommandItem value="messages" onSelect={() => go("/hospital/messages")}>
                   <MessageSquare className="mr-2 h-4 w-4" /> Messages
@@ -386,21 +384,18 @@ export function PortalSearch({
                   </CommandGroup>
                 </>
               )}
-              {doctors.length > 0 && (
+              {departments.length > 0 && (
                 <>
                   <CommandSeparator />
-                  <CommandGroup heading="Doctors">
-                    {doctors.map((d) => (
+                  <CommandGroup heading="Departments">
+                    {departments.map((d) => (
                       <CommandItem
-                        key={d.id}
-                        value={[d.full_name, d.specialty, d.email, d.phone, d.unique_id].filter(Boolean).join(" ")}
-                        onSelect={() => go("/hospital/doctors")}
+                        key={d}
+                        value={`${d} department`}
+                        onSelect={() => go("/hospital/departments")}
                       >
-                        <Users className="mr-2 h-4 w-4" />
-                        <span className="truncate">
-                          {d.full_name}
-                          {d.specialty ? <span className="text-muted-foreground ml-2 text-xs">{d.specialty}</span> : null}
-                        </span>
+                        <Building2 className="mr-2 h-4 w-4" />
+                        <span className="truncate">{d}</span>
                       </CommandItem>
                     ))}
                   </CommandGroup>
@@ -519,6 +514,6 @@ export function PortalSearch({
 
 function placeholder(variant: PortalSearchVariant, clinic?: string | null, hospital?: string | null) {
   if (variant === "clinic") return clinic ? `Search referrals, ${clinic}…` : "Search referrals and pages…";
-  if (variant === "hospital") return hospital ? `Search referrals, doctors, ${hospital}…` : "Search referrals, doctors, pages…";
+  if (variant === "hospital") return hospital ? `Search referrals, departments, ${hospital}…` : "Search referrals, departments, pages…";
   return "Search users, orgs, audit, pages…";
 }

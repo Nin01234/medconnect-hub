@@ -20,33 +20,33 @@ interface Referral {
   patient_phone: string | null; diagnosis: string | null; symptoms: string | null; urgency_level: string;
   vitals_bp: string | null; vitals_hr: string | null; vitals_temp: string | null; vitals_rr: string | null; vitals_spo2: string | null;
   referral_reason: string | null; notes: string | null; status: string; rejection_reason: string | null;
-  hospital_feedback: string | null; clinic_id: string | null; hospital_id: string | null; assigned_doctor_id: string | null;
+  hospital_feedback: string | null; clinic_id: string | null; hospital_id: string | null; assigned_department: string | null; department_id: string | null;
   created_at: string; updated_at: string;
   clinics: { name: string; unique_id: string | null; city: string | null; contact: string | null; region: string | null } | null;
   hospitals: { name: string; unique_id: string | null; city: string | null } | null;
-  doctors: { full_name: string; unique_id: string | null; specialty: string | null } | null;
+  departments: { id: string; name: string } | null;
 }
 interface Att { id: string; file_path: string; file_name: string; mime_type: string | null; }
 interface Hist { id: string; from_status: string | null; to_status: string; created_at: string; note: string | null; }
-interface Doctor { id: string; full_name: string; specialty: string | null; }
+interface DepartmentOption { id: string; name: string }
 
 export default function ReferralDetail({ portal }: { portal: "clinic" | "hospital" }) {
   const { id } = useParams();
   const nav = useNavigate();
-  const { roles, profile } = useAuth();
+  const { roles } = useAuth();
   const [ref, setRef] = useState<Referral | null>(null);
   const [atts, setAtts] = useState<Att[]>([]);
   const [hist, setHist] = useState<Hist[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [doctorId, setDoctorId] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [departmentOptions, setDepartmentOptions] = useState<DepartmentOption[]>([]);
 
   const load = useCallback(async () => {
     if (!id) return;
     const { data, error } = await supabase.from("referrals")
-      .select("*, clinics(name,unique_id,city,contact,region), hospitals(name,unique_id,city), doctors(full_name,unique_id,specialty)")
+      .select("*, clinics(name,unique_id,city,contact,region), hospitals(name,unique_id,city), departments(id,name)")
       .eq("id", id).maybeSingle();
     if (error) {
       toast.error(safeClientError(error));
@@ -73,11 +73,18 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     }
     setAtts((a ?? []) as Att[]);
     setHist((h ?? []) as Hist[]);
-    if (portal === "hospital" && profile?.hospital_id) {
-      const { data: d } = await supabase.from("doctors").select("id,full_name,specialty").eq("hospital_id", profile.hospital_id).eq("status","active");
-      setDoctors((d ?? []) as Doctor[]);
+    if ((data as { hospital_id?: string | null })?.hospital_id) {
+      const { data: deps } = await supabase
+        .from("departments")
+        .select("id,name")
+        .eq("hospital_id", (data as { hospital_id: string }).hospital_id)
+        .eq("status", "active")
+        .order("name");
+      setDepartmentOptions((deps ?? []) as DepartmentOption[]);
+    } else {
+      setDepartmentOptions([]);
     }
-  }, [id, nav, portal, profile?.hospital_id]);
+  }, [id, nav]);
 
   const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
     void load();
@@ -240,11 +247,10 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
               <p className="mt-1 text-sm">{ref.rejection_reason}</p>
             </div>
           )}
-          {ref.doctors && (
+          {(ref.departments?.name || ref.assigned_department) && (
             <div className="mt-6 bg-primary/5 border border-primary/20 rounded-lg p-4">
-              <p className="text-xs uppercase font-semibold text-primary tracking-wider">Assigned Doctor</p>
-              <p className="text-xs text-muted-foreground">Doctor ID: {ref.doctors.unique_id ?? "—"}</p>
-              <p className="mt-1 font-medium">{ref.doctors.full_name}{ref.doctors.specialty ? ` · ${ref.doctors.specialty}` : ""}</p>
+              <p className="text-xs uppercase font-semibold text-primary tracking-wider">Assigned Department</p>
+              <p className="mt-1 font-medium">{ref.departments?.name ?? ref.assigned_department}</p>
             </div>
           )}
         </CardContent>
@@ -265,16 +271,36 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
 
             <div className="grid md:grid-cols-2 gap-4 pt-4 border-t">
               <div>
-                <Label>Assign to doctor</Label>
+                <Label>Assign to department</Label>
                 <div className="flex gap-2 mt-1">
-                  <Select value={doctorId} onValueChange={setDoctorId}>
-                    <SelectTrigger><SelectValue placeholder="Choose doctor" /></SelectTrigger>
+                  <Select value={departmentId} onValueChange={setDepartmentId}>
+                    <SelectTrigger><SelectValue placeholder="Choose department" /></SelectTrigger>
                     <SelectContent>
-                      {doctors.map(d => <SelectItem key={d.id} value={d.id}>{d.full_name}{d.specialty ? ` · ${d.specialty}` : ""}</SelectItem>)}
+                      {departmentOptions.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  <Button variant="hero" disabled={!doctorId || busy} onClick={() => updateStatus("assigned", { assigned_doctor_id: doctorId })}>Assign</Button>
+                  <Button
+                    variant="hero"
+                    disabled={!departmentId || busy}
+                    onClick={() => {
+                      const chosen = departmentOptions.find((d) => d.id === departmentId);
+                      void updateStatus("assigned", {
+                        department_id: departmentId,
+                        assigned_department: chosen?.name ?? null,
+                        assigned_doctor_id: null,
+                      });
+                    }}
+                  >
+                    Assign
+                  </Button>
                 </div>
+                {departmentOptions.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    No departments configured for this hospital yet.
+                  </p>
+                )}
               </div>
               <div>
                 <Label>Reject with reason</Label>
