@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PasswordInput } from "@/components/ui/password-input";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { resetPasswordSchema } from "@/lib/validation";
@@ -56,11 +56,11 @@ export default function ResetPasswordPage() {
           <form className="mt-6 space-y-4" onSubmit={submit}>
             <div>
               <Label htmlFor="pw">New password</Label>
-              <PasswordInput id="pw" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} />
+              <Input id="pw" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} />
             </div>
             <div>
               <Label htmlFor="pw2">Confirm new password</Label>
-              <PasswordInput id="pw2" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+              <Input id="pw2" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
             </div>
             <Button type="submit" variant="hero" disabled={!canSubmit}>
               {busy ? "Updating..." : "Update password"}

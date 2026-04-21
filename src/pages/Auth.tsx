@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -177,7 +176,7 @@ export default function Auth() {
                   </div>
                   <div className="sm:col-span-2">
                     <Label htmlFor="pw">Password</Label>
-                    <PasswordInput id="pw" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <Input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
                   </div>
                 </div>
               ) : (
@@ -188,7 +187,7 @@ export default function Auth() {
                   </div>
                   <div>
                     <Label htmlFor="pw">Password</Label>
-                    <PasswordInput id="pw" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <Input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
                   </div>
                 </div>
               )}
