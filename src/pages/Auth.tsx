@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { authSignInSchema, authSignUpSchema, LIMITS } from "@/lib/validation";
 import { sanitizeText } from "@/lib/sanitize";
 import { safeClientError } from "@/lib/safeError";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 export default function Auth() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -22,12 +23,17 @@ export default function Auth() {
   const [orgName, setOrgName] = useState("");
   const [orgType, setOrgType] = useState("Clinic");
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { user } = useAuth();
   const nav = useNavigate();
 
   useEffect(() => {
     if (user) nav("/portal", { replace: true });
   }, [user, nav]);
+
+  useEffect(() => {
+    if (!password) setShowPassword(false);
+  }, [password]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,11 +139,11 @@ export default function Auth() {
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
                       <Label htmlFor="name">Full name</Label>
-                      <Input id="name" required value={fullName} onChange={(e) => setFullName(e.target.value)} />
+                      <Input id="name" required value={fullName} onChange={(e) => setFullName(e.target.value)} disabled={busy} />
                     </div>
                     <div>
                       <Label htmlFor="phone">Phone</Label>
-                      <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                      <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={busy} />
                     </div>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-3">
@@ -149,15 +155,22 @@ export default function Auth() {
                         value={username}
                         onChange={(e) => setUsername(e.target.value.toLowerCase())}
                         placeholder="e.g. nino_admin"
+                        disabled={busy}
                       />
                     </div>
                     <div>
                       <Label htmlFor="org-name">Organization name</Label>
-                      <Input id="org-name" required value={orgName} onChange={(e) => setOrgName(e.target.value)} />
+                      <Input id="org-name" required value={orgName} onChange={(e) => setOrgName(e.target.value)} disabled={busy} />
                     </div>
                     <div>
                       <Label htmlFor="org-type">Organization type</Label>
-                      <Input id="org-type" value={orgType} onChange={(e) => setOrgType(e.target.value)} placeholder="Clinic, Hospital, CHPS..." />
+                      <Input
+                        id="org-type"
+                        value={orgType}
+                        onChange={(e) => setOrgType(e.target.value)}
+                        placeholder="Clinic, Hospital, CHPS..."
+                        disabled={busy}
+                      />
                     </div>
                   </div>
                 </>
@@ -172,27 +185,85 @@ export default function Auth() {
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
                       placeholder="you@example.com or username"
+                      disabled={busy}
                     />
                   </div>
                   <div className="sm:col-span-2">
                     <Label htmlFor="pw">Password</Label>
-                    <Input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <div className="relative">
+                      <Input
+                        id="pw"
+                        type={showPassword ? "text" : "password"}
+                        required
+                        minLength={6}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={password ? "pr-20" : ""}
+                        disabled={busy}
+                      />
+                      {password && (
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground hover:text-foreground transition"
+                          onClick={() => setShowPassword((v) => !v)}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            {showPassword ? "Hide" : "Show"}
+                          </span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ) : (
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
                   </div>
                   <div>
                     <Label htmlFor="pw">Password</Label>
-                    <Input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <div className="relative">
+                      <Input
+                        id="pw"
+                        type={showPassword ? "text" : "password"}
+                        required
+                        minLength={6}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={password ? "pr-20" : ""}
+                        disabled={busy}
+                      />
+                      {password && (
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground hover:text-foreground transition"
+                          onClick={() => setShowPassword((v) => !v)}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            {showPassword ? "Hide" : "Show"}
+                          </span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
-              <Button type="submit" variant="hero" className="w-full" size="lg" disabled={busy}>
-                {busy ? "Please wait..." : mode === "signin" ? "Sign in to portal" : "Submit signup request"}
+              <Button type="submit" variant="hero" className="w-full" size="lg" disabled={busy} aria-busy={busy}>
+                {busy ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Please wait...
+                  </span>
+                ) : mode === "signin" ? (
+                  "Sign in to portal"
+                ) : (
+                  "Submit signup request"
+                )}
               </Button>
             </form>
             {mode === "signin" && (
