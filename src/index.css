@@ -108,6 +108,11 @@
   button, input, select, textarea {
     font: inherit;
   }
+  /* Prevent duplicate password toggles in Edge/IE when using custom show/hide controls. */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear {
+    display: none;
+  }
   h1, h2, h3, .font-display {
     font-family: "Fraunces", "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", Georgia, serif;
     letter-spacing: -0.015em;
