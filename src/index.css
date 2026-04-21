@@ -94,6 +94,8 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-rendering: optimizeLegibility;
+    font-size: 16px;
+    line-height: 1.5;
   }
   body {
     @apply bg-background text-foreground;
@@ -101,13 +103,21 @@
     font-feature-settings: "ss01", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    line-height: 1.6;
   }
   button, input, select, textarea {
     font: inherit;
   }
   h1, h2, h3, .font-display {
     font-family: "Fraunces", "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", Georgia, serif;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.015em;
+    line-height: 1.2;
+  }
+  p, li {
+    line-height: 1.65;
+  }
+  p, li, td, th {
+    text-wrap: pretty;
   }
 }
 
