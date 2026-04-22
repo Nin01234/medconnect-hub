@@ -154,7 +154,7 @@ export default function PendingApprovalsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-3xl font-bold">Pending Approvals</h1>
-          <p className="text-muted-foreground">Review and approve or reject new self-registered accounts.</p>
+          <p className="text-muted-foreground">Review and approve or reject new accounts awaiting activation.</p>
         </div>
         <Button variant="outline" onClick={load} disabled={loading}>
           <RefreshCw className="h-4 w-4" /> Refresh

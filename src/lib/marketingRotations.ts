@@ -51,7 +51,7 @@ export const HERO_ROTATIONS: HeroRotation[] = [
 export const SUBTEXT_ROTATIONS: string[] = [
   "Manage referrals, track hospital responses, and keep your team aligned in one secure place.",
   "Structured, real-time referral workflow for Ghana Military Service Hospital & Clinic and partner sites.",
-  "Role-based access, admin-approved signups, and audit-friendly records for military health operations.",
+  "Role-based access, admin-managed account approvals, and audit-friendly records for military health operations.",
   "From peripheral clinics to the main hospital — one pipeline for referrals, messages, and outcomes.",
 ];
 
@@ -65,7 +65,7 @@ export const STAT_ROTATIONS: [StatTriple, StatTriple, StatTriple][] = [
   ],
   [
     { n: "Role-based", l: "Secure access" },
-    { n: "Admin OK", l: "For new signups" },
+    { n: "Admin OK", l: "For new accounts" },
     { n: "Encrypted", l: "In transit & at rest" },
   ],
   [
@@ -92,7 +92,7 @@ export const FEATURE_SLIDES: FeatureCardDef[][] = [
   ],
   [
     { icon: ShieldCheck, title: "Role-based secure access", desc: "Hospital, clinic, and admin views — least privilege by design.", accent: "primary" },
-    { icon: UserCheck, title: "Admin approval for signups", desc: "New accounts stay pending until an administrator activates them.", accent: "gold" },
+    { icon: UserCheck, title: "Admin account activation", desc: "New accounts stay pending until an administrator activates them.", accent: "gold" },
     { icon: Radio, title: "Live status & messages", desc: "Referrals and threads update without refreshing the page.", accent: "primary" },
     { icon: ClipboardList, title: "Traceable handoffs", desc: "Accept, assign, complete — clear history for every case.", accent: "gold" },
   ],
@@ -114,7 +114,7 @@ export const BADGE_ROTATIONS: string[] = [
 
 /** Auth panel bullet pairs (two lines) — rotate with headline */
 export const AUTH_BULLET_ROTATIONS: [string, string][] = [
-  ["Role-based secure access", "Admin approval for new signups"],
+  ["Role-based secure access", "Admin approval for new accounts"],
   ["Encrypted sign-in & sessions", "Least-privilege data access"],
   ["Audit-friendly activity trails", "Structured referral documents"],
   ["Hospital & clinic portals", "Aligned teams, one pipeline"],

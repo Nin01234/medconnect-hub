@@ -19,7 +19,7 @@ The app is a Vite + React SPA backed by Supabase (Auth, Postgres, RLS, Storage, 
 - Patient-level referral history
 - Referral messaging between institutions
 - File attachments on referrals (private bucket access via RLS policies)
-- Account approval workflow for self-signup users
+- Account approval workflow for admin-provisioned users
 - Organization management (clinics/hospitals)
 - Doctor management for hospitals
 - Audit logging of admin actions
@@ -155,7 +155,7 @@ Handled states include:
 Public:
 
 - `/` - landing page
-- `/auth` - sign in/up
+- `/auth` - sign in
 - `/terms` - terms
 
 Authenticated entry:
@@ -249,7 +249,7 @@ Sequences + triggers handle automatic assignment for new rows.
 - `update_updated_at_column()` - auto-updates `updated_at`
 - `set_referral_number()` - sets referral number on insert
 - `log_referral_status_change()` - appends referral status history on insert/update
-- `handle_new_user()` - auto-creates profile and default `clinic_user` role at auth signup
+- `handle_new_user()` - auto-creates profile and default `clinic_user` role at auth user creation
 - `assign_unique_id()` - assigns prefixed sequential IDs by table
 
 ## 13) RLS and access control
@@ -354,7 +354,7 @@ Sanitization:
 
 Main admin workflows include:
 
-- Approve/reject/suspend self-signup accounts
+- Approve/reject/suspend pending accounts
 - Create users with role and organization linkage
 - Edit users (role, status, org links, profile fields)
 - Reset credentials

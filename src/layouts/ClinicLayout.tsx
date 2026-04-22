@@ -10,8 +10,8 @@ import { PortalSearch } from "@/components/PortalSearch";
 
 const links = [
   { to: "/clinic", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/clinic/referrals/new", label: "Create Referral", icon: FilePlus2 },
-  { to: "/clinic/referrals", label: "My Referrals", icon: ListChecks },
+  { to: "/clinic/referrals/new", label: "Create Referral", icon: FilePlus2, end: true },
+  { to: "/clinic/referrals", label: "My Referrals", icon: ListChecks, end: true },
   { to: "/clinic/messages", label: "Messages & feedback", icon: MessageSquare },
   { to: "/clinic/reset-password", label: "Reset password", icon: KeyRound },
 ];

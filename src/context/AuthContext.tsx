@@ -140,10 +140,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
 
-    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let idleTimer: number | null = null;
     const clearIdle = () => {
       if (idleTimer != null) {
-        clearTimeout(idleTimer);
+        window.clearTimeout(idleTimer);
         idleTimer = null;
       }
     };

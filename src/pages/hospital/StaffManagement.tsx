@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, hasRole } from "@/context/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -71,7 +71,7 @@ export default function StaffManagement() {
     return result;
   };
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!profile?.hospital_id) return;
     const { data, error } = await supabase
       .from("profiles")
@@ -84,11 +84,11 @@ export default function StaffManagement() {
     }
     const staffOnly = ((data ?? []) as unknown as StaffRow[]).filter((u) => u.user_roles.some((r) => r.role === "hospital_staff"));
     setRows(staffOnly);
-  };
+  }, [profile?.hospital_id]);
 
   useEffect(() => {
     void load();
-  }, [profile?.hospital_id]);
+  }, [load]);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -123,7 +123,7 @@ export default function StaffManagement() {
     setBusy(true);
     try {
       const v = validated.data;
-      const payload = {
+      const payload: Record<string, unknown> = {
         full_name: sanitizeText(v.full_name, 200),
         username: sanitizeText(v.username, 30).toLowerCase(),
         phone: sanitizeOptionalText(v.phone || undefined, 40) ?? undefined,
@@ -133,7 +133,29 @@ export default function StaffManagement() {
         hospital_id: profile.hospital_id,
       };
       const normalizedEmail = sanitizeOptionalText(v.email || undefined, 320)?.toLowerCase();
+      const normalizedUsername = payload.username;
       if (normalizedEmail) payload.email = normalizedEmail;
+
+      // Pre-check common uniqueness conflicts so admins get instant feedback
+      // before we invoke the Edge Function.
+      const orFilters = [`username.eq.${normalizedUsername}`];
+      if (normalizedEmail) orFilters.push(`email.eq.${normalizedEmail}`);
+      const { data: existing, error: existingError } = await supabase
+        .from("profiles")
+        .select("id, username, email")
+        .or(orFilters.join(","))
+        .limit(1);
+      if (existingError) throw existingError;
+      const match = (existing ?? [])[0] as { username?: string | null; email?: string | null } | undefined;
+      if (match) {
+        if ((match.username ?? "").toLowerCase() === normalizedUsername) {
+          throw new Error("Username is already in use. Try a different one.");
+        }
+        if (normalizedEmail && (match.email ?? "").toLowerCase() === normalizedEmail) {
+          throw new Error("A user with this email already exists.");
+        }
+      }
+
       const { data, error } = await invokeFn("admin-create-user", payload);
       if (error) throw error;
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);

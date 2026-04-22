@@ -225,6 +225,50 @@ export type Database = {
         }
         Relationships: []
       }
+      patients: {
+        Row: {
+          age: number | null
+          clinic_id: string
+          created_at: string
+          created_by: string | null
+          full_name: string
+          gender: Database["public"]["Enums"]["gender_type"] | null
+          id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          age?: number | null
+          clinic_id: string
+          created_at?: string
+          created_by?: string | null
+          full_name: string
+          gender?: Database["public"]["Enums"]["gender_type"] | null
+          id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          age?: number | null
+          clinic_id?: string
+          created_at?: string
+          created_by?: string | null
+          full_name?: string
+          gender?: Database["public"]["Enums"]["gender_type"] | null
+          id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patients_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           clinic_id: string | null

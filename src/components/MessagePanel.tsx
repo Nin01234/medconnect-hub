@@ -13,7 +13,7 @@ import { safeClientError } from "@/lib/safeError";
 
 interface Msg { id: string; sender_id: string | null; message: string; created_at: string; }
 
-export function MessagePanel({ referralId }: { referralId: string }) {
+export function MessagePanel({ referralId, readOnly = false }: { referralId: string; readOnly?: boolean }) {
   const { user } = useAuth();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
@@ -39,6 +39,7 @@ export function MessagePanel({ referralId }: { referralId: string }) {
   }, [referralId, load, debouncedRealtime, cancelDebouncedRealtime]);
 
   const send = async () => {
+    if (readOnly) return;
     if (!text.trim() || !user) return;
     const parsed = referralMessageSchema.safeParse({ message: text });
     if (!parsed.success) {
@@ -69,8 +70,14 @@ export function MessagePanel({ referralId }: { referralId: string }) {
           ))}
         </div>
         <div className="flex gap-2">
-          <Input value={text} onChange={e => setText(e.target.value)} placeholder="Type a message…" onKeyDown={e => e.key === "Enter" && send()} />
-          <Button onClick={send} variant="hero"><Send className="h-4 w-4" /></Button>
+          <Input
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder={readOnly ? "Messaging is locked for completed referrals." : "Type a message…"}
+            onKeyDown={e => e.key === "Enter" && send()}
+            disabled={readOnly}
+          />
+          <Button onClick={send} variant="hero" disabled={readOnly}><Send className="h-4 w-4" /></Button>
         </div>
       </CardContent>
     </Card>

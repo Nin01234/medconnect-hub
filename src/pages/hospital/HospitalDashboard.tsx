@@ -158,6 +158,9 @@ export default function HospitalDashboard() {
               <p className="text-lg font-extrabold tracking-tight text-foreground">{hospitalName || "Hospital name not set"}</p>
             </div>
             <p className="text-muted-foreground mt-2 min-h-6 transition-all duration-300">{heroHighlights[highlightIndex]}</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Account ID: <span className="font-mono">{profile?.unique_id ?? "—"}</span>
+            </p>
           </div>
           <div className="flex gap-2">
             <Link to="/hospital/inbox">

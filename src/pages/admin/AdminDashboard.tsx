@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/context/AuthContext";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Users, Building2, Hospital, FileText, UserCheck, Activity, ArrowRight, ShieldCheck } from "lucide-react";
@@ -13,6 +14,7 @@ interface RecentAudit {
 }
 
 export default function AdminDashboard() {
+  const { profile } = useAuth();
   const [c, setC] = useState({ users: 0, clinics: 0, hospitals: 0, referrals: 0, pendingApprovals: 0 });
   const [recentAudits, setRecentAudits] = useState<RecentAudit[]>([]);
   useEffect(() => {
@@ -48,6 +50,9 @@ export default function AdminDashboard() {
             <p className="max-w-2xl text-sm text-muted-foreground">
               Monitor platform health, review onboarding queues, and access critical admin actions from one place.
             </p>
+            <p className="text-xs text-muted-foreground">
+              Account ID: <span className="font-mono">{profile?.unique_id ?? "—"}</span>
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link to="/admin/users"><Button variant="outlineBrand">Manage users</Button></Link>
@@ -81,7 +86,7 @@ export default function AdminDashboard() {
               </Link>
               <Link to="/admin/approvals" className="rounded-xl border p-4 transition-colors hover:bg-secondary/30">
                 <p className="font-medium">Onboarding Queue</p>
-                <p className="text-sm text-muted-foreground mt-1">Approve and activate pending signups.</p>
+                <p className="text-sm text-muted-foreground mt-1">Approve and activate pending accounts.</p>
               </Link>
               <Link to="/admin/roles" className="rounded-xl border p-4 transition-colors hover:bg-secondary/30">
                 <p className="font-medium">Roles & Access</p>

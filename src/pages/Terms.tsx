@@ -35,7 +35,7 @@ export default function Terms() {
 
         <h2>3. Eligible use</h2>
         <p>
-          Accounts are issued for professional use only. You must provide accurate registration information. New signups may remain inactive until approved by an administrator. You must not share credentials or attempt to access data outside your assigned role.
+          Accounts are issued for professional use only. You must provide accurate account information. New accounts may remain inactive until approved by an administrator. You must not share credentials or attempt to access data outside your assigned role.
         </p>
 
         <h2>4. Confidentiality &amp; patient information</h2>

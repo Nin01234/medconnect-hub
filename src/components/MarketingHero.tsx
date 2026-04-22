@@ -1,23 +1,17 @@
 import type { HeroRotation } from "@/lib/marketingRotations";
 
-function accentClass(a: HeroRotation["line1Accent"]) {
-  return a === "primary" ? "text-primary" : "text-accent";
-}
-
 export function MarketingHeroHeading({
   rotation,
-  className = "font-display text-5xl lg:text-7xl font-bold mt-6 leading-[1.05]",
+  className = "text-4xl lg:text-6xl font-semibold mt-6 leading-tight tracking-tight text-foreground",
 }: {
   rotation: HeroRotation;
   className?: string;
 }) {
   return (
     <h1 className={className}>
-      {rotation.line1Before}
-      <span className={accentClass(rotation.line1Accent)}>{rotation.line1Highlight}</span>
+      {rotation.line1Before}{rotation.line1Highlight}
       <br />
-      {rotation.line2Before}
-      <span className={accentClass(rotation.line2Accent)}>{rotation.line2Highlight}</span>
+      {rotation.line2Before}{rotation.line2Highlight}
     </h1>
   );
 }

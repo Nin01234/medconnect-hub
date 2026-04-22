@@ -27,7 +27,7 @@ interface Referral {
   departments: { id: string; name: string } | null;
 }
 interface Att { id: string; file_path: string; file_name: string; mime_type: string | null; }
-interface Hist { id: string; from_status: string | null; to_status: string; created_at: string; note: string | null; }
+interface Hist { id: string; from_status: string | null; to_status: string; created_at: string; note: string | null; changed_by?: string | null; }
 interface DepartmentOption { id: string; name: string }
 
 export default function ReferralDetail({ portal }: { portal: "clinic" | "hospital" }) {
@@ -42,6 +42,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   const [feedback, setFeedback] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [departmentOptions, setDepartmentOptions] = useState<DepartmentOption[]>([]);
+  const [completedBy, setCompletedBy] = useState<{ accountId: string | null; userId: string; name: string | null } | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -72,7 +73,8 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
       toast.error(`Failed to load timeline: ${safeClientError(historyErr)}`);
     }
     setAtts((a ?? []) as Att[]);
-    setHist((h ?? []) as Hist[]);
+    const historyRows = (h ?? []) as Hist[];
+    setHist(historyRows);
     if ((data as { hospital_id?: string | null })?.hospital_id) {
       const { data: deps } = await supabase
         .from("departments")
@@ -84,7 +86,32 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     } else {
       setDepartmentOptions([]);
     }
-  }, [id, nav]);
+
+    const canSeeCompletionActor = portal === "hospital" && hasRole(roles, "hospital_admin", "admin");
+    if (!canSeeCompletionActor) {
+      setCompletedBy(null);
+      return;
+    }
+
+    const completionEvents = historyRows.filter((row) => row.to_status === "completed");
+    const latestCompletion = completionEvents[completionEvents.length - 1] as (Hist & { changed_by?: string | null }) | undefined;
+    const changedBy = latestCompletion?.changed_by ?? null;
+    if (!changedBy) {
+      setCompletedBy(null);
+      return;
+    }
+
+    const { data: actor } = await supabase
+      .from("profiles")
+      .select("id, unique_id, full_name")
+      .eq("id", changedBy)
+      .maybeSingle();
+    setCompletedBy({
+      accountId: actor?.unique_id ?? null,
+      userId: changedBy,
+      name: actor?.full_name ?? null,
+    });
+  }, [id, nav, portal, roles]);
 
   const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
     void load();
@@ -106,6 +133,8 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
 
   const isHospital = portal === "hospital";
   const canHospitalAct = isHospital && hasRole(roles, "hospital_admin", "hospital_staff", "admin");
+  const isCompleted = ref.status === "completed";
+  const canOverrideCompletedLock = isHospital && hasRole(roles, "hospital_admin", "admin");
 
   const updateStatus = async (status: string, extra: Record<string, unknown> = {}) => {
     setBusy(true);
@@ -253,14 +282,28 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
               <p className="mt-1 font-medium">{ref.departments?.name ?? ref.assigned_department}</p>
             </div>
           )}
+          {isHospital && hasRole(roles, "hospital_admin", "admin") && ref.status === "completed" && completedBy && (
+            <div className="mt-6 bg-secondary border border-border rounded-lg p-4">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Completed By</p>
+              <p className="mt-1 text-sm">
+                {completedBy.name ?? "Hospital staff"} - Account ID:{" "}
+                <span className="font-mono">{completedBy.accountId ?? completedBy.userId}</span>
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Hospital actions */}
-      {canHospitalAct && (
+      {canHospitalAct && (!isCompleted || canOverrideCompletedLock) && (
         <Card className="shadow-card no-print">
           <CardContent className="p-6 space-y-4">
             <h3 className="font-display text-lg font-semibold">Hospital Actions</h3>
+            {isCompleted && canOverrideCompletedLock && (
+              <p className="text-xs text-muted-foreground">
+                Completed referral lock is active for staff. You can still make final corrections as a hospital admin.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" disabled={busy} onClick={() => updateStatus("under_review")}>Mark Under Review</Button>
               <Button variant="hero" size="sm" disabled={busy} onClick={() => updateStatus("accepted")}>Accept</Button>
@@ -336,7 +379,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
             </ol>
           </CardContent>
         </Card>
-        <MessagePanel referralId={ref.id} />
+        <MessagePanel referralId={ref.id} readOnly={isCompleted && !canOverrideCompletedLock} />
       </div>
     </div>
   );

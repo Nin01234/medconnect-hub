@@ -74,10 +74,8 @@ export default function CreateReferral() {
       const patientName = sanitizeText(v.patient_name, 200);
       const patientPhone = v.patient_phone ? sanitizeText(v.patient_phone, 40) : null;
       const patientAge = v.patient_age ?? null;
-      const gender =
-        !v.patient_gender || v.patient_gender === ""
-          ? null
-          : v.patient_gender;
+      const gender: "male" | "female" | "other" | null =
+        v.patient_gender === "" ? null : v.patient_gender;
 
       const { data: patientId, error: patientErr } = await supabase.rpc("upsert_patient_for_clinic", {
         p_clinic_id: profile.clinic_id,

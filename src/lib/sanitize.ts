@@ -39,3 +39,11 @@ export function sanitizeFileName(name: string): string {
   const base = name.replace(/[/\\]/g, "_").replace(/\0/g, "").trim();
   return base.slice(0, 255) || "file";
 }
+
+/**
+ * Sanitization for auth identifiers (email or username) before validation/auth RPC.
+ * Keeps behavior predictable while removing spoofing/control characters.
+ */
+export function sanitizeLoginIdentifier(input: string, maxLen = 320): string {
+  return sanitizeText(input, maxLen).toLowerCase();
+}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth, hasRole } from "@/context/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Input } from "@/components/ui/input";
@@ -41,12 +41,14 @@ const statusCardTone: Record<string, string> = {
 };
 
 export default function AssignedCases() {
-  const { profile } = useAuth();
+  const { profile, roles } = useAuth();
   const queryClient = useQueryClient();
   const hospitalId = profile?.hospital_id ?? null;
+  const canSeeCompletionActor = hasRole(roles, "hospital_admin", "admin");
   const [q, setQ] = useState("");
   const [department, setDepartment] = useState("all");
   const [status, setStatus] = useState("all");
+  const [completedByAccountId, setCompletedByAccountId] = useState<Record<string, string>>({});
 
   const { data: rows = [] } = useQuery({
     queryKey: hospitalId ? referralKeys.hospitalAssigned(hospitalId) : ["referrals", "hospital", "inactive", "assigned"],
@@ -92,6 +94,70 @@ export default function AssignedCases() {
       supabase.removeChannel(ch);
     };
   }, [hospitalId, debouncedRealtime, cancelDebouncedRealtime]);
+
+  useEffect(() => {
+    const loadCompletionActors = async () => {
+      if (!canSeeCompletionActor) {
+        setCompletedByAccountId({});
+        return;
+      }
+
+      const completedIds = rows.filter((r) => r.status === "completed").map((r) => r.id);
+      if (completedIds.length === 0) {
+        setCompletedByAccountId({});
+        return;
+      }
+
+      const { data: historyRows, error: historyErr } = await supabase
+        .from("referral_status_history")
+        .select("referral_id, changed_by, created_at, to_status")
+        .in("referral_id", completedIds)
+        .eq("to_status", "completed")
+        .order("created_at", { ascending: false });
+      if (historyErr) {
+        toast.error(safeClientError(historyErr));
+        return;
+      }
+
+      const latestByReferral = new Map<string, string>();
+      for (const row of historyRows ?? []) {
+        const item = row as { referral_id: string; changed_by: string | null };
+        if (!latestByReferral.has(item.referral_id) && item.changed_by) {
+          latestByReferral.set(item.referral_id, item.changed_by);
+        }
+      }
+
+      const actorIds = Array.from(new Set(Array.from(latestByReferral.values())));
+      if (actorIds.length === 0) {
+        setCompletedByAccountId({});
+        return;
+      }
+
+      const { data: profiles, error: profileErr } = await supabase
+        .from("profiles")
+        .select("id, unique_id")
+        .in("id", actorIds);
+      if (profileErr) {
+        toast.error(safeClientError(profileErr));
+        return;
+      }
+
+      const idToAccountId = new Map(
+        (profiles ?? []).map((p) => {
+          const row = p as { id: string; unique_id: string | null };
+          return [row.id, row.unique_id ?? row.id] as const;
+        }),
+      );
+
+      const mapping: Record<string, string> = {};
+      for (const [referralId, actorId] of latestByReferral.entries()) {
+        mapping[referralId] = idToAccountId.get(actorId) ?? actorId;
+      }
+      setCompletedByAccountId(mapping);
+    };
+
+    void loadCompletionActors();
+  }, [rows, canSeeCompletionActor]);
 
   const departmentOptions = useMemo(() => {
     const set = new Set(
@@ -185,6 +251,7 @@ export default function AssignedCases() {
                 <th className="text-left px-5 py-3">Patient history</th>
                 <th className="text-left px-5 py-3">Department</th>
                 <th className="text-left px-5 py-3">Status</th>
+                {canSeeCompletionActor ? <th className="text-left px-5 py-3">Completed by (Account ID)</th> : null}
                 <th className="text-left px-5 py-3">Status details</th>
                 <th className="text-left px-5 py-3">Received</th>
               </tr>
@@ -210,6 +277,11 @@ export default function AssignedCases() {
                   </td>
                   <td className="px-5 py-3">{r.departments?.name ?? r.assigned_department ?? "—"}</td>
                   <td className="px-5 py-3"><StatusBadge status={r.status} /></td>
+                  {canSeeCompletionActor ? (
+                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
+                      {r.status === "completed" ? (completedByAccountId[r.id] ?? "—") : "—"}
+                    </td>
+                  ) : null}
                   <td className="px-5 py-3 text-xs max-w-[22rem]">
                     {r.rejection_reason ? (
                       <span className="text-destructive line-clamp-2">{r.rejection_reason}</span>
@@ -224,7 +296,7 @@ export default function AssignedCases() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center py-10 text-muted-foreground">No assigned cases found.</td>
+                  <td colSpan={canSeeCompletionActor ? 9 : 8} className="text-center py-10 text-muted-foreground">No assigned cases found.</td>
                 </tr>
               )}
             </tbody>

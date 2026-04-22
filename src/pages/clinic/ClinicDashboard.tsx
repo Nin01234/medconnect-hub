@@ -157,6 +157,9 @@ export default function ClinicDashboard() {
             <p className="text-muted-foreground mt-2 min-h-6 transition-all duration-300">
               {liveHighlights[highlightIndex]}
             </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Account ID: <span className="font-mono">{profile?.unique_id ?? "—"}</span>
+            </p>
           </div>
           <Link to="/clinic/referrals/new">
             <Button variant="hero">

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeText, sanitizeOptionalText, sanitizeFileName } from "@/lib/sanitize";
+import { sanitizeText, sanitizeOptionalText, sanitizeFileName, sanitizeLoginIdentifier } from "@/lib/sanitize";
 
 describe("sanitizeText", () => {
   it("strips null bytes and trims", () => {
@@ -29,5 +29,15 @@ describe("sanitizeOptionalText", () => {
 describe("sanitizeFileName", () => {
   it("replaces path separators", () => {
     expect(sanitizeFileName("../../etc/passwd")).toBe(".._.._etc_passwd");
+  });
+});
+
+describe("sanitizeLoginIdentifier", () => {
+  it("normalizes case and trims", () => {
+    expect(sanitizeLoginIdentifier("  User.Name@Example.COM  ")).toBe("user.name@example.com");
+  });
+
+  it("removes spoofing chars and tags", () => {
+    expect(sanitizeLoginIdentifier("\u202E<b>admin_user</b>")).toBe("admin_user");
   });
 });
