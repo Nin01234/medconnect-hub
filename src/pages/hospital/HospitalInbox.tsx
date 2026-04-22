@@ -34,11 +34,12 @@ export default function HospitalInbox() {
     queryKey: hospitalId ? referralKeys.hospitalInbox(hospitalId) : ["referrals", "hospital", "inactive", "inbox"],
     enabled: !!hospitalId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const query = supabase
         .from("referrals")
         .select("id, referral_number, patient_id, patient_name, status, urgency_level, created_at, clinics(name)")
         .eq("hospital_id", hospitalId!)
         .order("created_at", { ascending: false });
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as unknown as Row[];
     },

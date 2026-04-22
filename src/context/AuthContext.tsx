@@ -18,6 +18,8 @@ interface Profile {
   phone: string | null;
   role: AppRole | null;
   status: string;
+  staff_id: string | null;
+  department_id: string | null;
   clinic_id: string | null;
   hospital_id: string | null;
   clinics?: { name: string; region: string | null; city: string | null } | null;
@@ -77,6 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         phone: p.phone,
         role: rolesList[0] ?? null,
         status: p.status,
+        staff_id: (p as { staff_id?: string | null }).staff_id ?? null,
+        department_id: (p as { department_id?: string | null }).department_id ?? null,
         clinic_id: p.clinic_id,
         hospital_id: p.hospital_id,
         clinics: p.clinics,

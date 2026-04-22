@@ -22,6 +22,7 @@ interface Row {
   updated_at: string;
   department_id: string | null;
   assigned_department: string | null;
+  assigned_staff_id: string | null;
   urgency_level: string;
   rejection_reason: string | null;
   hospital_feedback: string | null;
@@ -56,13 +57,14 @@ export default function AssignedCases() {
     queryFn: async () => {
       const isAssignedWorkflowStatus = (value: string) =>
         assignedWorkflowStatuses.includes(value as (typeof assignedWorkflowStatuses)[number]);
-      const { data, error } = await supabase
+      const query = supabase
         .from("referrals")
         .select(
-          "id, referral_number, patient_id, patient_name, status, created_at, updated_at, department_id, assigned_department, urgency_level, rejection_reason, hospital_feedback, clinics(name)",
+          "id, referral_number, patient_id, patient_name, status, created_at, updated_at, department_id, assigned_department, assigned_staff_id, urgency_level, rejection_reason, hospital_feedback, clinics(name)",
         )
         .eq("hospital_id", hospitalId!)
         .order("created_at", { ascending: false });
+      const { data, error } = await query;
       if (error) throw error;
       const rows = ((data ?? []) as unknown as Omit<Row, "departments">[]).map((r) => ({
         ...r,

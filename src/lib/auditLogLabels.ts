@@ -12,6 +12,10 @@ const ACTION_LABELS: Record<string, string> = {
   doctor_created: "Added a doctor",
   doctor_updated: "Updated a doctor",
   doctor_deleted: "Removed a doctor",
+  referral_department_assigned: "Assigned referral to a department",
+  referral_staff_assigned: "Assigned referral to hospital staff",
+  referral_doctor_assigned: "Assigned referral to a doctor",
+  referral_visibility_changed: "Changed referral visibility across departments",
 };
 
 export function auditActionTitle(action: string): string {
@@ -32,6 +36,11 @@ export function auditActionDetail(action: string, metadata: Record<string, unkno
   if (metadata.full_name != null) parts.push(`Name: ${String(metadata.full_name)}`);
   if (metadata.clinic_id != null) parts.push(`Clinic ID: ${String(metadata.clinic_id)}`);
   if (metadata.hospital_id != null) parts.push(`Hospital ID: ${String(metadata.hospital_id)}`);
+  if (metadata.staff_id != null) parts.push(`Staff ID: ${String(metadata.staff_id)}`);
+  if (metadata.assigned_staff_id != null) parts.push(`Assigned Staff: ${String(metadata.assigned_staff_id)}`);
+  if (metadata.department_id != null) parts.push(`Department ID: ${String(metadata.department_id)}`);
+  if (metadata.assigned_doctor_id != null) parts.push(`Assigned Doctor ID: ${String(metadata.assigned_doctor_id)}`);
+  if (metadata.visible_to_all_departments != null) parts.push(`Visible To All Departments: ${String(metadata.visible_to_all_departments)}`);
   const extra = Object.entries(metadata).filter(
     ([k]) =>
       ![
@@ -45,6 +54,11 @@ export function auditActionDetail(action: string, metadata: Record<string, unkno
         "full_name",
         "clinic_id",
         "hospital_id",
+        "staff_id",
+        "assigned_staff_id",
+        "department_id",
+        "assigned_doctor_id",
+        "visible_to_all_departments",
       ].includes(k),
   );
   for (const [k, v] of extra) parts.push(`${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);

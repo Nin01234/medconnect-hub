@@ -273,12 +273,14 @@ export type Database = {
         Row: {
           clinic_id: string | null
           created_at: string
+          department_id: string | null
           email: string | null
           full_name: string | null
           hospital_id: string | null
           id: string
           phone: string | null
           status: string
+          staff_id: string | null
           unique_id: string | null
           updated_at: string
           username: string | null
@@ -286,12 +288,14 @@ export type Database = {
         Insert: {
           clinic_id?: string | null
           created_at?: string
+          department_id?: string | null
           email?: string | null
           full_name?: string | null
           hospital_id?: string | null
           id: string
           phone?: string | null
           status?: string
+          staff_id?: string | null
           unique_id?: string | null
           updated_at?: string
           username?: string | null
@@ -299,12 +303,14 @@ export type Database = {
         Update: {
           clinic_id?: string | null
           created_at?: string
+          department_id?: string | null
           email?: string | null
           full_name?: string | null
           hospital_id?: string | null
           id?: string
           phone?: string | null
           status?: string
+          staff_id?: string | null
           unique_id?: string | null
           updated_at?: string
           username?: string | null
@@ -315,6 +321,13 @@ export type Database = {
             columns: ["clinic_id"]
             isOneToOne: false
             referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
           {
@@ -441,6 +454,7 @@ export type Database = {
         Row: {
           assigned_department: string | null
           assigned_doctor_id: string | null
+          assigned_staff_id: string | null
           clinic_id: string | null
           created_at: string
           created_by: string | null
@@ -459,6 +473,7 @@ export type Database = {
           referral_reason: string | null
           rejection_reason: string | null
           status: Database["public"]["Enums"]["referral_status"]
+          staff_assignment_locked: boolean
           symptoms: string | null
           vitals_bp: string | null
           vitals_hr: string | null
@@ -468,10 +483,12 @@ export type Database = {
           unique_id: string | null
           updated_at: string
           urgency_level: Database["public"]["Enums"]["urgency_level"]
+          visible_to_all_departments: boolean
         }
         Insert: {
           assigned_department?: string | null
           assigned_doctor_id?: string | null
+          assigned_staff_id?: string | null
           clinic_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -490,6 +507,7 @@ export type Database = {
           referral_reason?: string | null
           rejection_reason?: string | null
           status?: Database["public"]["Enums"]["referral_status"]
+          staff_assignment_locked?: boolean
           symptoms?: string | null
           vitals_bp?: string | null
           vitals_hr?: string | null
@@ -499,10 +517,12 @@ export type Database = {
           unique_id?: string | null
           updated_at?: string
           urgency_level?: Database["public"]["Enums"]["urgency_level"]
+          visible_to_all_departments?: boolean
         }
         Update: {
           assigned_department?: string | null
           assigned_doctor_id?: string | null
+          assigned_staff_id?: string | null
           clinic_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -521,6 +541,7 @@ export type Database = {
           referral_reason?: string | null
           rejection_reason?: string | null
           status?: Database["public"]["Enums"]["referral_status"]
+          staff_assignment_locked?: boolean
           symptoms?: string | null
           vitals_bp?: string | null
           vitals_hr?: string | null
@@ -530,6 +551,7 @@ export type Database = {
           unique_id?: string | null
           updated_at?: string
           urgency_level?: Database["public"]["Enums"]["urgency_level"]
+          visible_to_all_departments?: boolean
         }
         Relationships: [
           {
@@ -537,6 +559,13 @@ export type Database = {
             columns: ["assigned_doctor_id"]
             isOneToOne: false
             referencedRelation: "doctors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_assigned_staff_id_fkey"
+            columns: ["assigned_staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -597,6 +626,7 @@ export type Database = {
     }
     Functions: {
       current_clinic_id: { Args: never; Returns: string }
+      current_department_id: { Args: never; Returns: string }
       current_hospital_id: { Args: never; Returns: string }
       has_role: {
         Args: {

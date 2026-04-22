@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Check, KeyRound, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { Check, Eye, EyeOff, KeyRound, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   adminCreateUserSchema,
@@ -54,6 +54,7 @@ export default function UsersPage() {
     hospital_id: "",
   });
   const [newPassword, setNewPassword] = useState("");
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
 
   const isUnauthorizedError = (error: unknown) => {
     const err = error as { message?: string; context?: { status?: number; statusText?: string } };
@@ -144,6 +145,9 @@ export default function UsersPage() {
     org_mode: "existing" as "existing" | "new", clinic_id: "", hospital_id: "",
     new_org: { name: "", type: "Other", region: "", city: "", address: "", gps_code: "", contact: "", email: "", ownership_type: "Private", departments: [] as string[] },
   });
+  useEffect(() => {
+    if (!form.password) setShowCreatePassword(false);
+  }, [form.password]);
 
   const submit = async () => {
     const validated = adminCreateUserSchema.safeParse({
@@ -378,7 +382,30 @@ export default function UsersPage() {
                 <F label="Email (optional)"><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></F></Two>
                 <Two><F label="Username *"><Input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase() }))} placeholder="lowercase letters, numbers, . _ -" /></F>
                 <F label="Phone"><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></F></Two>
-                <F label="Password * (min 6)"><Input type="password" autoComplete="new-password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} /></F>
+                <F label="Password * (min 6)">
+                  <div className="relative">
+                    <Input
+                      type={showCreatePassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={form.password}
+                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                      className={form.password ? "pr-20" : ""}
+                    />
+                    {form.password && (
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground hover:text-foreground transition"
+                        onClick={() => setShowCreatePassword((v) => !v)}
+                        aria-label={showCreatePassword ? "Hide password" : "Show password"}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {showCreatePassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          {showCreatePassword ? "Hide" : "Show"}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                </F>
                 <Two>
                   <F label="Role *">
                     <Select value={form.role} onValueChange={v => setForm(f => ({ ...f, role: v, org_mode: "existing" }))}>

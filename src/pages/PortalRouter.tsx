@@ -4,12 +4,33 @@ import { FullPageLoader } from "@/components/Guards";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function PortalRouter() {
   const { user, roles, loading, profile } = useAuth();
+  const isHospitalStaff = hasRole(roles, "hospital_staff");
+  const { data: departmentStatus = "active", isLoading: departmentLoading } = useQuery({
+    queryKey: profile?.department_id ? ["auth", "department-status", profile.department_id] : ["auth", "department-status", "none"],
+    enabled: !!user && isHospitalStaff && !!profile?.department_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("departments")
+        .select("status,name")
+        .eq("id", profile!.department_id!)
+        .maybeSingle();
+      if (error) throw error;
+      const row = data as { status?: string } | null;
+      return row?.status ?? "inactive";
+    },
+  });
   if (loading) return <FullPageLoader />;
+  if (departmentLoading) return <FullPageLoader />;
   if (!user) return <Navigate to="/auth" replace />;
   if (!hasRole(roles, "admin") && profile?.status !== "active") return <AccountStatus status={profile?.status} />;
+  if (isHospitalStaff && profile?.department_id && departmentStatus !== "active") {
+    return <AccountStatus status="department_inactive" />;
+  }
 
   if (hasRole(roles, "admin")) return <Navigate to="/admin" replace />;
   if (hasRole(roles, "hospital_admin", "hospital_staff")) {
@@ -32,7 +53,9 @@ function AccountStatus({ status }: { status?: string }) {
         ? "Account deactivated"
         : status === "rejected"
           ? "Account rejected"
-          : "Account inactive";
+          : status === "department_inactive"
+            ? "Department inactive"
+            : "Account inactive";
   const message =
     status === "pending_approval"
       ? "Your account request is awaiting admin approval. You will be able to login after an administrator activates your account."
@@ -40,6 +63,8 @@ function AccountStatus({ status }: { status?: string }) {
         ? "Your account has been deactivated by an administrator. Please contact an admin to reactivate your account."
         : status === "rejected"
           ? "Your account request was rejected. Please contact an admin if you believe this is a mistake."
+        : status === "department_inactive"
+          ? "Your department is currently deactivated by a hospital admin, so staff access is temporarily blocked."
           : "Your account is not active. Please contact an administrator.";
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-subtle">

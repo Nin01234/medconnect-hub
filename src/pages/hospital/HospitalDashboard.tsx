@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth, hasRole } from "@/context/AuthContext";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { referralKeys } from "@/lib/referralQueryKeys";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +18,11 @@ interface Row {
   urgency_level: string;
   created_at: string;
   clinics: { name: string } | null;
+}
+
+interface DepartmentInfo {
+  name: string;
+  status: string;
 }
 
 function AnimatedCount({ value }: { value: number }) {
@@ -47,10 +52,26 @@ function AnimatedCount({ value }: { value: number }) {
 }
 
 export default function HospitalDashboard() {
-  const { profile } = useAuth();
+  const { profile, roles } = useAuth();
   const queryClient = useQueryClient();
   const hospitalId = profile?.hospital_id ?? null;
   const fallbackHospitalName = profile?.hospitals?.name?.trim() ?? "";
+  const isHospitalStaff = hasRole(roles, "hospital_staff");
+
+  const { data: staffDepartmentName = "" } = useQuery({
+    queryKey: profile?.department_id ? ["hospital", "staff-department", profile.department_id] : ["hospital", "staff-department", "none"],
+    enabled: isHospitalStaff && !!profile?.department_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("departments")
+        .select("name,status")
+        .eq("id", profile!.department_id!)
+        .maybeSingle();
+      if (error) throw error;
+      const dep = data as DepartmentInfo | null;
+      return dep?.status === "active" ? (dep.name ?? "") : "";
+    },
+  });
 
   const { data: hospitalName = fallbackHospitalName } = useQuery({
     queryKey: hospitalId ? ["hospital", "name", hospitalId] : ["hospital", "name", "inactive"],
@@ -71,12 +92,13 @@ export default function HospitalDashboard() {
     queryKey: hospitalId ? referralKeys.hospitalDashboard(hospitalId) : ["referrals", "hospital", "inactive", "dashboard"],
     enabled: !!hospitalId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const query = supabase
         .from("referrals")
         .select("id, referral_number, patient_name, status, urgency_level, created_at, clinics(name)")
         .eq("hospital_id", hospitalId!)
         .order("created_at", { ascending: false })
         .limit(100);
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as unknown as Row[];
     },
@@ -114,7 +136,13 @@ export default function HospitalDashboard() {
     [rows],
   );
 
-  const priority = useMemo(() => rows.filter((r) => ["new", "under_review"].includes(r.status)).slice(0, 6), [rows]);
+  const priority = useMemo(
+    () =>
+      rows
+        .filter((r) => ["new", "under_review", "accepted", "assigned", "info_requested"].includes(r.status))
+        .slice(0, 6),
+    [rows],
+  );
   const heroHighlights = useMemo(
     () => [
       "Review incoming referrals, prioritize critical cases, and monitor outcomes.",
@@ -161,6 +189,16 @@ export default function HospitalDashboard() {
             <p className="mt-2 text-xs text-muted-foreground">
               Account ID: <span className="font-mono">{profile?.unique_id ?? "—"}</span>
             </p>
+            {hasRole(roles, "hospital_staff") && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Staff ID: <span className="font-mono">{profile?.staff_id ?? "—"}</span>
+              </p>
+            )}
+            {isHospitalStaff && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Department: <span className="font-semibold">{staffDepartmentName || "Not assigned"}</span>
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             <Link to="/hospital/inbox">

@@ -9,18 +9,20 @@ import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
 import { MessagePanel } from "@/components/MessagePanel";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ArrowLeft, Printer, Download, Paperclip, Clock, History } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { sanitizeText } from "@/lib/sanitize";
 import { safeClientError } from "@/lib/safeError";
+import { doctorCreateSchema } from "@/lib/validation";
 
 interface Referral {
   id: string; unique_id: string | null; referral_number: string | null; patient_id: string | null; patient_name: string; patient_age: number | null; patient_gender: string | null;
   patient_phone: string | null; diagnosis: string | null; symptoms: string | null; urgency_level: string;
   vitals_bp: string | null; vitals_hr: string | null; vitals_temp: string | null; vitals_rr: string | null; vitals_spo2: string | null;
   referral_reason: string | null; notes: string | null; status: string; rejection_reason: string | null;
-  hospital_feedback: string | null; clinic_id: string | null; hospital_id: string | null; assigned_department: string | null; department_id: string | null;
+  hospital_feedback: string | null; clinic_id: string | null; hospital_id: string | null; assigned_department: string | null; department_id: string | null; assigned_staff_id: string | null; staff_assignment_locked: boolean; visible_to_all_departments: boolean;
   created_at: string; updated_at: string;
   clinics: { name: string; unique_id: string | null; city: string | null; contact: string | null; region: string | null } | null;
   hospitals: { name: string; unique_id: string | null; city: string | null } | null;
@@ -29,11 +31,12 @@ interface Referral {
 interface Att { id: string; file_path: string; file_name: string; mime_type: string | null; }
 interface Hist { id: string; from_status: string | null; to_status: string; created_at: string; note: string | null; changed_by?: string | null; }
 interface DepartmentOption { id: string; name: string }
+interface DoctorOption { id: string; full_name: string; specialty: string | null; }
 
 export default function ReferralDetail({ portal }: { portal: "clinic" | "hospital" }) {
   const { id } = useParams();
   const nav = useNavigate();
-  const { roles } = useAuth();
+  const { roles, profile } = useAuth();
   const [ref, setRef] = useState<Referral | null>(null);
   const [atts, setAtts] = useState<Att[]>([]);
   const [hist, setHist] = useState<Hist[]>([]);
@@ -41,7 +44,11 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   const [reason, setReason] = useState("");
   const [feedback, setFeedback] = useState("");
   const [departmentId, setDepartmentId] = useState("");
+  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
+  const [doctorId, setDoctorId] = useState("");
+  const [newDoctor, setNewDoctor] = useState({ full_name: "", specialty: "", phone: "", email: "" });
   const [departmentOptions, setDepartmentOptions] = useState<DepartmentOption[]>([]);
+  const [visibleAllDepartments, setVisibleAllDepartments] = useState(false);
   const [completedBy, setCompletedBy] = useState<{ accountId: string | null; userId: string; name: string | null } | null>(null);
 
   const load = useCallback(async () => {
@@ -62,6 +69,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
       return;
     }
     setRef(data as unknown as Referral);
+    setVisibleAllDepartments(Boolean((data as { visible_to_all_departments?: boolean }).visible_to_all_departments));
     const [{ data: a, error: attachmentsErr }, { data: h, error: historyErr }] = await Promise.all([
       supabase.from("referral_attachments").select("*").eq("referral_id", id),
       supabase.from("referral_status_history").select("*").eq("referral_id", id).order("created_at"),
@@ -76,15 +84,24 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     const historyRows = (h ?? []) as Hist[];
     setHist(historyRows);
     if ((data as { hospital_id?: string | null })?.hospital_id) {
+      const hospitalId = (data as { hospital_id: string }).hospital_id;
       const { data: deps } = await supabase
         .from("departments")
         .select("id,name")
-        .eq("hospital_id", (data as { hospital_id: string }).hospital_id)
+        .eq("hospital_id", hospitalId)
         .eq("status", "active")
         .order("name");
       setDepartmentOptions((deps ?? []) as DepartmentOption[]);
+      const { data: doctors } = await supabase
+        .from("doctors")
+        .select("id,full_name,specialty")
+        .eq("hospital_id", hospitalId)
+        .eq("status", "active")
+        .order("full_name");
+      setDoctorOptions((doctors ?? []) as DoctorOption[]);
     } else {
       setDepartmentOptions([]);
+      setDoctorOptions([]);
     }
 
     const canSeeCompletionActor = portal === "hospital" && hasRole(roles, "hospital_admin", "admin");
@@ -132,9 +149,13 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   if (!ref) return <div className="p-10 text-center text-muted-foreground">Loading…</div>;
 
   const isHospital = portal === "hospital";
+  const isHospitalAdmin = isHospital && hasRole(roles, "hospital_admin", "admin");
+  const isHospitalStaff = isHospital && hasRole(roles, "hospital_staff");
   const canHospitalAct = isHospital && hasRole(roles, "hospital_admin", "hospital_staff", "admin");
   const isCompleted = ref.status === "completed";
   const canOverrideCompletedLock = isHospital && hasRole(roles, "hospital_admin", "admin");
+  const canAccept = !["accepted", "rejected", "completed"].includes(ref.status);
+  const canReject = !["accepted", "rejected", "completed"].includes(ref.status);
 
   const updateStatus = async (status: string, extra: Record<string, unknown> = {}) => {
     setBusy(true);
@@ -174,6 +195,38 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     const { data, error } = await supabase.storage.from("referral-attachments").createSignedUrl(att.file_path, 60);
     if (error || !data) return toast.error("Could not generate link");
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const assignDoctor = async () => {
+    if (!doctorId) return;
+    await updateStatus(ref.status, { assigned_doctor_id: doctorId });
+  };
+
+  const createDoctor = async () => {
+    const parsed = doctorCreateSchema.safeParse(newDoctor);
+    if (!parsed.success || !ref.hospital_id) {
+      toast.error(parsed.success ? "Hospital link is missing." : parsed.error.issues[0]?.message ?? "Invalid doctor details.");
+      return;
+    }
+    const values = parsed.data;
+    const { data, error } = await supabase
+      .from("doctors")
+      .insert({
+        hospital_id: ref.hospital_id,
+        full_name: sanitizeText(values.full_name, 200),
+        specialty: sanitizeText(values.specialty ?? "", 200) || null,
+        phone: sanitizeText(values.phone ?? "", 40) || null,
+        email: sanitizeText(values.email ?? "", 320) || null,
+      })
+      .select("id,full_name,specialty")
+      .single();
+    if (error) {
+      toast.error(safeClientError(error));
+      return;
+    }
+    setDoctorOptions((prev) => [...prev, data as DoctorOption]);
+    setNewDoctor({ full_name: "", specialty: "", phone: "", email: "" });
+    toast.success("Doctor created");
   };
 
   return (
@@ -282,6 +335,24 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
               <p className="mt-1 font-medium">{ref.departments?.name ?? ref.assigned_department}</p>
             </div>
           )}
+          {ref.visible_to_all_departments && (
+            <div className="mt-3 bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-4">
+              <p className="text-xs uppercase font-semibold tracking-wider text-cyan-700 dark:text-cyan-300">Visibility</p>
+              <p className="mt-1 text-sm">Visible to all hospital departments</p>
+            </div>
+          )}
+          {ref.assigned_staff_id && (
+            <div className="mt-3 bg-secondary border border-border rounded-lg p-4">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Assigned Staff</p>
+              <p className="mt-1 font-mono text-xs">{ref.assigned_staff_id}</p>
+            </div>
+          )}
+          {isHospitalStaff && (
+            <div className="mt-3 bg-secondary border border-border rounded-lg p-4">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Printed By Staff ID</p>
+              <p className="mt-1 font-mono text-xs">{profile?.staff_id ?? "—"}</p>
+            </div>
+          )}
           {isHospital && hasRole(roles, "hospital_admin", "admin") && ref.status === "completed" && completedBy && (
             <div className="mt-6 bg-secondary border border-border rounded-lg p-4">
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Completed By</p>
@@ -306,50 +377,118 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
             )}
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" disabled={busy} onClick={() => updateStatus("under_review")}>Mark Under Review</Button>
-              <Button variant="hero" size="sm" disabled={busy} onClick={() => updateStatus("accepted")}>Accept</Button>
+              <Button variant="hero" size="sm" disabled={busy || !canAccept} onClick={() => updateStatus("accepted")}>Accept</Button>
               <Button variant="outline" size="sm" disabled={busy} onClick={() => updateStatus("info_requested")}>Request Info</Button>
               <Button variant="outline" size="sm" disabled={busy} onClick={() => updateStatus("treated")}>Mark Treated</Button>
               <Button variant="gold" size="sm" disabled={busy} onClick={() => updateStatus("completed")}>Complete</Button>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4 pt-4 border-t">
-              <div>
-                <Label>Assign to department</Label>
-                <div className="flex gap-2 mt-1">
-                  <Select value={departmentId} onValueChange={setDepartmentId}>
-                    <SelectTrigger><SelectValue placeholder="Choose department" /></SelectTrigger>
-                    <SelectContent>
-                      {departmentOptions.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="hero"
-                    disabled={!departmentId || busy}
-                    onClick={() => {
-                      const chosen = departmentOptions.find((d) => d.id === departmentId);
-                      void updateStatus("assigned", {
-                        department_id: departmentId,
-                        assigned_department: chosen?.name ?? null,
-                        assigned_doctor_id: null,
-                      });
-                    }}
-                  >
-                    Assign
-                  </Button>
+              {isHospitalAdmin && (
+                <div>
+                  <Label>Assign to department (Admin)</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Select value={departmentId} onValueChange={setDepartmentId}>
+                      <SelectTrigger><SelectValue placeholder="Choose department" /></SelectTrigger>
+                      <SelectContent>
+                        {departmentOptions.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="hero"
+                      disabled={!departmentId || busy}
+                      onClick={() => {
+                        const chosen = departmentOptions.find((d) => d.id === departmentId);
+                        void updateStatus("assigned", {
+                          department_id: departmentId,
+                          assigned_department: chosen?.name ?? null,
+                          assigned_doctor_id: null,
+                          visible_to_all_departments: false,
+                        });
+                      }}
+                    >
+                      Assign
+                    </Button>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant={visibleAllDepartments ? "hero" : "outline"}
+                      disabled={busy}
+                      onClick={() =>
+                        void updateStatus(ref.status, {
+                          visible_to_all_departments: !visibleAllDepartments,
+                        })
+                      }
+                    >
+                      {visibleAllDepartments ? "Visible to all departments" : "Make visible to all departments"}
+                    </Button>
+                  </div>
                 </div>
-                {departmentOptions.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    No departments configured for this hospital yet.
-                  </p>
-                )}
-              </div>
+              )}
+              {isHospitalStaff && (
+                <div>
+                  <Label>Forward to another department</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Select value={departmentId} onValueChange={setDepartmentId}>
+                      <SelectTrigger><SelectValue placeholder="Choose department" /></SelectTrigger>
+                      <SelectContent>
+                        {departmentOptions.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      disabled={!departmentId || busy}
+                      onClick={() => {
+                        const chosen = departmentOptions.find((d) => d.id === departmentId);
+                        void updateStatus("assigned", {
+                          department_id: departmentId,
+                          assigned_department: chosen?.name ?? null,
+                          visible_to_all_departments: false,
+                        });
+                      }}
+                    >
+                      Forward
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {isHospitalStaff && (
+                <div>
+                  <Label>Assign doctor (Hospital Staff)</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Select value={doctorId} onValueChange={setDoctorId}>
+                      <SelectTrigger><SelectValue placeholder="Choose doctor" /></SelectTrigger>
+                      <SelectContent>
+                        {doctorOptions.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.full_name}{d.specialty ? ` · ${d.specialty}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button variant="hero" disabled={!doctorId || busy} onClick={() => void assignDoctor()}>
+                      Assign
+                    </Button>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-2 mt-2">
+                    <Input placeholder="New doctor full name" value={newDoctor.full_name} onChange={(e) => setNewDoctor((p) => ({ ...p, full_name: e.target.value }))} />
+                    <Input placeholder="Specialty" value={newDoctor.specialty} onChange={(e) => setNewDoctor((p) => ({ ...p, specialty: e.target.value }))} />
+                    <Button variant="outline" onClick={() => void createDoctor()} disabled={busy || !newDoctor.full_name.trim()}>
+                      Create doctor
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div>
                 <Label>Reject with reason</Label>
                 <div className="flex gap-2 mt-1">
                   <Textarea rows={1} value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason…" />
-                  <Button variant="destructive" disabled={!reason.trim() || busy} onClick={() => updateStatus("rejected", { rejection_reason: reason })}>Reject</Button>
+                  <Button variant="destructive" disabled={!reason.trim() || busy || !canReject} onClick={() => updateStatus("rejected", { rejection_reason: reason })}>Reject</Button>
                 </div>
               </div>
               <div className="md:col-span-2">

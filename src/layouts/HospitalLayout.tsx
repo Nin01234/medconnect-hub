@@ -40,7 +40,7 @@ export default function HospitalLayout() {
 
   const navLinks = roles.includes("hospital_admin") || roles.includes("admin")
     ? links
-    : links.filter((l) => l.to !== "/hospital/staff");
+    : links.filter((l) => l.to !== "/hospital/staff" && l.to !== "/hospital/departments");
 
   return (
     <div className="min-h-screen min-h-[100dvh] bg-background">

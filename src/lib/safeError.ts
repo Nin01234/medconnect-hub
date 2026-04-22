@@ -6,11 +6,28 @@ function isPostgrestError(e: unknown): e is PostgrestError {
   return typeof e === "object" && e !== null && "code" in e && "message" in e;
 }
 
+function extractErrorMessage(err: unknown): string | null {
+  if (!err || typeof err !== "object") return null;
+  const e = err as {
+    message?: unknown;
+    error?: unknown;
+    details?: unknown;
+    context?: { status?: number; clone?: () => Response };
+  };
+
+  if (typeof e.message === "string" && e.message.trim()) return e.message;
+  if (typeof e.error === "string" && e.error.trim()) return e.error;
+  if (typeof e.details === "string" && e.details.trim()) return e.details;
+  return null;
+}
+
 /** User-safe message for Supabase / network errors (avoids leaking schema or internals in production). */
 export function safeClientError(err: unknown): string {
   if (import.meta.env.DEV) {
-    if (err instanceof Error) return err.message;
-    return String(err);
+    if (err instanceof Error && err.message) return err.message;
+    const extracted = extractErrorMessage(err);
+    if (extracted) return extracted;
+    return GENERIC;
   }
   if (isPostgrestError(err)) {
     if (err.code === "PGRST116") return "Record not found.";
@@ -31,7 +48,9 @@ export function safeClientError(err: unknown): string {
 /** Safe message for edge-function invoke errors (redacts verbose bodies in production). */
 export async function safeFunctionError(err: unknown): Promise<string> {
   if (import.meta.env.DEV) {
-    return err instanceof Error ? err.message : String(err);
+    if (err instanceof Error && err.message) return err.message;
+    const extracted = extractErrorMessage(err);
+    return extracted ?? GENERIC;
   }
   const ctx = err as { context?: { status?: number; clone?: () => Response } };
   const status = ctx?.context?.status;

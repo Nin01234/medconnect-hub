@@ -60,6 +60,8 @@ interface Payload {
   status?: "pending_approval" | "active" | "rejected" | "suspended";
   clinic_id?: string | null;
   hospital_id?: string | null;
+  department_id?: string | null;
+  staff_id?: string;
   new_password?: string;
 }
 
@@ -117,6 +119,8 @@ Deno.serve(async (req) => {
     if (body.status && !ALLOWED_STATUS.has(body.status)) return fail(req, "Invalid status");
     if (body.clinic_id && !UUID_RE.test(body.clinic_id)) return fail(req, "Invalid clinic reference");
     if (body.hospital_id && !UUID_RE.test(body.hospital_id)) return fail(req, "Invalid hospital reference");
+    if (body.department_id && !UUID_RE.test(body.department_id)) return fail(req, "Invalid department reference");
+    if (body.staff_id !== undefined) body.staff_id = cap(body.staff_id, 50);
 
     if (isHospitalAdmin && !isAdmin) {
       const callerHospitalId = callerProfile?.hospital_id ?? null;
@@ -124,7 +128,7 @@ Deno.serve(async (req) => {
 
       const { data: targetProfile, error: targetProfileError } = await admin
         .from("profiles")
-        .select("hospital_id")
+        .select("hospital_id,department_id,staff_id")
         .eq("id", body.user_id)
         .maybeSingle();
       if (targetProfileError || !targetProfile) return fail(req, "Target user not found", 404);
@@ -140,6 +144,18 @@ Deno.serve(async (req) => {
       if (body.role && body.role !== "hospital_staff") return fail(req, "Hospital admins cannot change roles outside hospital staff", 403);
       if (body.hospital_id && body.hospital_id !== callerHospitalId) return fail(req, "Hospital admins cannot move staff to another hospital", 403);
       if (body.clinic_id) return fail(req, "Hospital admins cannot assign clinic links", 403);
+      if (body.action === "update_user") {
+        const finalDepartmentId = body.department_id ?? targetProfile.department_id ?? null;
+        const finalStaffId = body.staff_id !== undefined ? body.staff_id.trim() : (targetProfile.staff_id ?? "");
+        if (!finalDepartmentId) return fail(req, "Department is required");
+        if (!finalStaffId) return fail(req, "Staff ID is required");
+        const { data: dep } = await admin
+          .from("departments")
+          .select("id,hospital_id")
+          .eq("id", finalDepartmentId)
+          .maybeSingle();
+        if (!dep || dep.hospital_id !== callerHospitalId) return fail(req, "Department does not belong to your hospital", 403);
+      }
       if (body.action === "approve_user" || body.action === "update_user") {
         body.role = "hospital_staff";
         body.hospital_id = callerHospitalId;
@@ -173,6 +189,8 @@ Deno.serve(async (req) => {
       if (body.username !== undefined) profileUpdate.username = body.username;
       if (body.phone !== undefined) profileUpdate.phone = body.phone;
       if (body.status !== undefined) profileUpdate.status = body.status;
+      if (body.department_id !== undefined) profileUpdate.department_id = body.department_id;
+      if (body.staff_id !== undefined) profileUpdate.staff_id = body.staff_id || null;
       if (body.role !== undefined) Object.assign(profileUpdate, profileOrgUpdate);
 
       const { error: profileError } = await admin.from("profiles").update(profileUpdate).eq("id", body.user_id);
@@ -213,7 +231,24 @@ Deno.serve(async (req) => {
       const { error } = await admin.auth.admin.deleteUser(body.user_id);
       if (error) {
         console.error(error);
-        return fail(req, "Could not delete user");
+        if (!isAuthNotFoundError(error)) {
+          return fail(req, "Could not delete user");
+        }
+
+        // If auth record is already gone, finish cleanup for dangling rows
+        // so admin deletes remain idempotent.
+        const [{ error: profileCleanupErr }, { error: roleCleanupErr }] = await Promise.all([
+          admin.from("profiles").delete().eq("id", body.user_id),
+          admin.from("user_roles").delete().eq("user_id", body.user_id),
+        ]);
+        if (profileCleanupErr) {
+          console.error(profileCleanupErr);
+          return fail(req, "Could not clean up orphan profile");
+        }
+        if (roleCleanupErr) {
+          console.error(roleCleanupErr);
+          return fail(req, "Could not clean up orphan role rows");
+        }
       }
     }
 
@@ -226,6 +261,8 @@ Deno.serve(async (req) => {
         role: body.role,
         status: body.status,
         username: body.username,
+        department_id: body.department_id,
+        staff_id: body.staff_id,
       },
     });
 

@@ -62,6 +62,8 @@ interface Payload {
   clinic_id?: string | null;
   new_clinic?: { name: string; type?: string; region?: string; city?: string; address?: string; gps_code?: string; contact?: string; email?: string; ownership_type?: string };
   hospital_id?: string | null;
+  department_id?: string | null;
+  staff_id?: string;
   new_hospital?: { name: string; type?: string; region?: string; city?: string; address?: string; gps_code?: string; contact?: string; email?: string; departments?: string[] };
 }
 
@@ -150,6 +152,8 @@ Deno.serve(async (req) => {
     }
     if (body.clinic_id && !UUID_RE.test(body.clinic_id)) return fail(req, "Invalid clinic reference");
     if (body.hospital_id && !UUID_RE.test(body.hospital_id)) return fail(req, "Invalid hospital reference");
+    if (body.department_id && !UUID_RE.test(body.department_id)) return fail(req, "Invalid department reference");
+    if (body.staff_id !== undefined) body.staff_id = cap(body.staff_id, 50);
 
     if (isHospitalAdmin) {
       const callerHospitalId = callerProfile?.hospital_id ?? null;
@@ -157,6 +161,8 @@ Deno.serve(async (req) => {
       if (body.role !== "hospital_staff") return fail(req, "Hospital admins can only create hospital staff", 403);
       if (body.new_hospital || body.new_clinic || body.clinic_id) return fail(req, "Hospital admins cannot create organizations", 403);
       if (body.hospital_id && body.hospital_id !== callerHospitalId) return fail(req, "Hospital admins can only create staff in their own hospital", 403);
+      if (!body.department_id) return fail(req, "Department is required for hospital staff");
+      if (!body.staff_id || !body.staff_id.trim()) return fail(req, "Staff ID is required");
       body.hospital_id = callerHospitalId;
     }
 
@@ -182,6 +188,15 @@ Deno.serve(async (req) => {
         return fail(req, "Hospital create failed");
       }
       hospital_id = h.id;
+    }
+    if (body.role === "hospital_staff") {
+      if (!hospital_id) return fail(req, "Hospital is required for staff");
+      const { data: dep } = await admin
+        .from("departments")
+        .select("id,hospital_id")
+        .eq("id", body.department_id ?? "")
+        .maybeSingle();
+      if (!dep || dep.hospital_id !== hospital_id) return fail(req, "Department does not belong to this hospital");
     }
 
     // Create auth user (auto-confirmed)
@@ -209,6 +224,8 @@ Deno.serve(async (req) => {
       status: body.status ?? 'active',
       clinic_id,
       hospital_id,
+      department_id: body.department_id ?? null,
+      staff_id: body.staff_id?.trim() || null,
     }).eq('id', newUserId);
     if (profileErr) {
       console.error(profileErr);
@@ -217,6 +234,23 @@ Deno.serve(async (req) => {
         return fail(req, "Username is already in use. Try a different one.", 409);
       }
       return fail(req, "Could not create user profile");
+    }
+
+    if (body.role === "hospital_staff") {
+      const { data: createdProfile, error: createdProfileErr } = await admin
+        .from("profiles")
+        .select("department_id, staff_id")
+        .eq("id", newUserId)
+        .maybeSingle();
+      if (createdProfileErr) {
+        console.error(createdProfileErr);
+        await admin.auth.admin.deleteUser(newUserId);
+        return fail(req, "Could not verify staff profile fields");
+      }
+      if (!createdProfile?.department_id || !createdProfile?.staff_id) {
+        await admin.auth.admin.deleteUser(newUserId);
+        return fail(req, "Staff ID or department was not saved correctly");
+      }
     }
 
     // Replace default role
@@ -241,7 +275,14 @@ Deno.serve(async (req) => {
       action: 'create_user',
       entity_type: 'user',
       entity_id: newUserId,
-      metadata: { role: body.role, clinic_id, hospital_id, username: body.username },
+      metadata: {
+        role: body.role,
+        clinic_id,
+        hospital_id,
+        department_id: body.department_id ?? null,
+        staff_id: body.staff_id?.trim() || null,
+        username: body.username,
+      },
     });
 
     return json(req, { ok: true, user_id: newUserId, clinic_id, hospital_id });

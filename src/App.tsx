@@ -84,7 +84,7 @@ const App = () => (
                   <Route path="patients/:patientId" element={<PatientReferralHistory portal="hospital" />} />
                   <Route path="assigned" element={<AssignedCases />} />
                   <Route path="feedback" element={<FeedbackCenter />} />
-                  <Route path="departments" element={<Departments />} />
+                  <Route path="departments" element={<RequireRole roles={["hospital_admin", "admin"]}><Departments /></RequireRole>} />
                   <Route path="staff" element={<StaffManagement />} />
                   <Route path="messages" element={<HospitalMessages />} />
                   <Route path="reset-password" element={<PortalResetPassword />} />

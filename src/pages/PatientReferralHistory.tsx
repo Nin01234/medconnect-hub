@@ -24,6 +24,8 @@ interface ReferralRow {
   status: string;
   urgency_level: string;
   created_at: string;
+  assigned_doctor_id: string | null;
+  doctors: { full_name: string; specialty: string | null; phone: string | null; email: string | null } | null;
   hospitals: { name: string } | null;
   clinics: { name: string } | null;
 }
@@ -69,7 +71,7 @@ export default function PatientReferralHistory({ portal }: { portal: "clinic" | 
 
     const { data: refs, error: rErr } = await supabase
       .from("referrals")
-      .select("id, referral_number, unique_id, patient_name, status, urgency_level, created_at, hospitals(name), clinics(name)")
+      .select("id, referral_number, unique_id, patient_name, status, urgency_level, created_at, assigned_doctor_id, doctors(full_name,specialty,phone,email), hospitals(name), clinics(name)")
       .eq("patient_id", patientId)
       .order("created_at", { ascending: false });
 
@@ -149,6 +151,7 @@ export default function PatientReferralHistory({ portal }: { portal: "clinic" | 
                 {portal === "clinic" ? <th className="text-left px-5 py-3">Hospital</th> : null}
                 <th className="text-left px-5 py-3">Urgency</th>
                 <th className="text-left px-5 py-3">Status</th>
+                <th className="text-left px-5 py-3">Assigned doctor</th>
                 <th className="text-left px-5 py-3">Created</th>
               </tr>
             </thead>
@@ -172,6 +175,17 @@ export default function PatientReferralHistory({ portal }: { portal: "clinic" | 
                   <td className="px-5 py-3">
                     <StatusBadge status={r.status} />
                   </td>
+                  <td className="px-5 py-3 text-xs text-muted-foreground">
+                    {r.doctors ? (
+                      <div className="space-y-0.5">
+                        <p className="font-medium text-foreground">{r.doctors.full_name}</p>
+                        <p>{r.doctors.specialty ?? "General"}</p>
+                        <p>{r.doctors.phone ?? r.doctors.email ?? "—"}</p>
+                      </div>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-muted-foreground text-xs whitespace-nowrap">
                     {new Date(r.created_at).toLocaleString()}
                   </td>
@@ -180,7 +194,7 @@ export default function PatientReferralHistory({ portal }: { portal: "clinic" | 
               {referrals.length === 0 && (
                 <tr>
                   <td
-                    colSpan={portal === "clinic" ? 5 : 5}
+                    colSpan={portal === "clinic" ? 6 : 6}
                     className="text-center py-10 text-muted-foreground"
                   >
                     No referrals are linked to this patient record yet.
