@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -8,6 +8,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { FullPageLoader, RequireAuth, RequireRole } from "@/components/Guards";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { warmPortalBundles } from "@/lib/routeWarmup";
 
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Landing = lazy(() => import("./pages/Landing"));
@@ -46,19 +47,16 @@ const queryClient = new QueryClient({
       gcTime: 5 * 60_000,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
-      retry: 1,
+      refetchOnMount: false,
+      retry: (failureCount, error) => {
+        const msg = error instanceof Error ? error.message.toLowerCase() : "";
+        if (msg.includes("invalid login") || msg.includes("unauthorized") || msg.includes("forbidden")) return false;
+        return failureCount < 2;
+      },
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     },
   },
 });
-
-function warmPortalBundles() {
-  void Promise.allSettled([
-    import("./pages/PortalRouter"),
-    import("./layouts/ClinicLayout"),
-    import("./layouts/HospitalLayout"),
-    import("./layouts/AdminLayout"),
-  ]);
-}
 
 const App = () => {
   useEffect(() => {
@@ -81,6 +79,7 @@ const App = () => {
                 <Routes>
                   <Route path="/" element={<Landing />} />
                   <Route path="/auth" element={<Auth />} />
+                  <Route path="/login" element={<Navigate to="/auth" replace />} />
                   <Route path="/terms" element={<Terms />} />
                   <Route path="/portal" element={<RequireAuth><PortalRouter /></RequireAuth>} />
 

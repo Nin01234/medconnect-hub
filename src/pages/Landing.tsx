@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { useAuth, hasRole } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
+import { hasRole } from "@/context/authRoles";
 import { Activity, Stethoscope } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect } from "react";
@@ -14,6 +15,7 @@ import {
   SUBTEXT_ROTATIONS,
 } from "@/lib/marketingRotations";
 import { MarketingHeroHeading } from "@/components/MarketingHero";
+import { warmAuthAndPortalBundles } from "@/lib/routeWarmup";
 
 const ROTATE_MS = 9000;
 
@@ -68,12 +70,22 @@ export default function Landing() {
             <p className="text-lg text-muted-foreground mt-6 max-w-lg">{sub}</p>
           </div>
           <div className="flex flex-wrap gap-3 mt-8">
-            <Link to="/auth">
+            <Link
+              to="/auth"
+              onMouseEnter={warmAuthAndPortalBundles}
+              onFocus={warmAuthAndPortalBundles}
+              onTouchStart={warmAuthAndPortalBundles}
+            >
               <Button variant="hero" size="lg">
                 Get started
               </Button>
             </Link>
-            <Link to="/auth">
+            <Link
+              to="/auth"
+              onMouseEnter={warmAuthAndPortalBundles}
+              onFocus={warmAuthAndPortalBundles}
+              onTouchStart={warmAuthAndPortalBundles}
+            >
               <Button variant="outlineBrand" size="lg">
                 I have an account
               </Button>
