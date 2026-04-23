@@ -49,6 +49,7 @@ export function safeClientError(err: unknown): string {
 export async function safeFunctionError(err: unknown): Promise<string> {
   const ctx = err as { context?: { status?: number; clone?: () => Response } };
   const status = ctx?.context?.status;
+  const extracted = extractErrorMessage(err);
 
   // In dev, Supabase function invoke errors often surface as the generic:
   // "Edge Function returned a non-2xx status code". Prefer the response JSON.
@@ -74,6 +75,9 @@ export async function safeFunctionError(err: unknown): Promise<string> {
 
   if (status === 401) return "Session expired or unauthorized. Sign in again.";
   if (status === 403) return "You do not have permission for this action.";
+  if (extracted && /network|fetch|failed to fetch|cors/i.test(extracted)) {
+    return "Network/CORS error while contacting server. Check deployed origin and function CORS settings.";
+  }
   if (status && status >= 500) return GENERIC;
   if (ctx?.context?.clone) {
     try {
@@ -84,5 +88,6 @@ export async function safeFunctionError(err: unknown): Promise<string> {
       /* ignore */
     }
   }
+  if (status) return `Request failed (HTTP ${status}).`;
   return GENERIC;
 }

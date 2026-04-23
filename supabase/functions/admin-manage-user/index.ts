@@ -17,7 +17,8 @@ function corsForRequest(req: Request): Record<string, string> {
     };
   }
 
-  const isAllowed = !!origin && allowed.includes(origin);
+  const isVercelPreview = !!origin && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
+  const isAllowed = !!origin && (allowed.includes(origin) || isVercelPreview);
   return {
     ...corsHeaders,
     "Access-Control-Allow-Origin": isAllowed ? origin : "null",
