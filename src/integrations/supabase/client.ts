@@ -2,7 +2,9 @@
 // Security: use only the Supabase anon (publishable) key in VITE_* vars. Never put
 // service_role or other secrets here — they are embedded in the public client bundle.
 import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from './types';
+import { sanitizePayload } from "@/lib/sanitizePayload";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -35,10 +37,61 @@ assertEnv();
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+const GLOBAL_SUPABASE_KEY = "__medconnect_supabase_client__";
+const globalScope = globalThis as typeof globalThis & {
+  [GLOBAL_SUPABASE_KEY]?: SupabaseClient<Database>;
+};
+
+const buildClient = () =>
+  createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
   }
 });
+
+type MutableSupabaseClient = SupabaseClient<Database> & {
+  from: (relation: string) => unknown;
+  rpc: (fn: string, args?: Record<string, unknown>, options?: unknown) => unknown;
+};
+
+function patchWriteSanitization(client: SupabaseClient<Database>): SupabaseClient<Database> {
+  const mutableClient = client as MutableSupabaseClient & { __writesSanitized?: boolean };
+  if (mutableClient.__writesSanitized) return client;
+
+  const originalFrom = mutableClient.from.bind(mutableClient);
+  mutableClient.from = ((relation: string) => {
+    const queryBuilder = originalFrom(relation) as {
+      insert?: (values: unknown, options?: unknown) => unknown;
+      update?: (values: unknown, options?: unknown) => unknown;
+      upsert?: (values: unknown, options?: unknown) => unknown;
+    };
+
+    if (queryBuilder.insert) {
+      const insert = queryBuilder.insert.bind(queryBuilder);
+      queryBuilder.insert = (values: unknown, options?: unknown) => insert(sanitizePayload(values), options);
+    }
+    if (queryBuilder.update) {
+      const update = queryBuilder.update.bind(queryBuilder);
+      queryBuilder.update = (values: unknown, options?: unknown) => update(sanitizePayload(values), options);
+    }
+    if (queryBuilder.upsert) {
+      const upsert = queryBuilder.upsert.bind(queryBuilder);
+      queryBuilder.upsert = (values: unknown, options?: unknown) => upsert(sanitizePayload(values), options);
+    }
+    return queryBuilder;
+  }) as MutableSupabaseClient["from"];
+
+  const originalRpc = mutableClient.rpc.bind(mutableClient);
+  mutableClient.rpc = ((fn: string, args?: Record<string, unknown>, options?: unknown) => {
+    const sanitizedArgs = args ? sanitizePayload(args) : args;
+    return originalRpc(fn, sanitizedArgs, options);
+  }) as MutableSupabaseClient["rpc"];
+
+  mutableClient.__writesSanitized = true;
+  return mutableClient;
+}
+
+export const supabase = globalScope[GLOBAL_SUPABASE_KEY] ?? patchWriteSanitization(buildClient());
+globalScope[GLOBAL_SUPABASE_KEY] = supabase;
