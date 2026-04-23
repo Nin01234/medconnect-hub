@@ -1,8 +1,8 @@
 import { useMemo, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, hasRole } from "@/context/AuthContext";
-import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { useAuth } from "@/context/AuthContext";
+import { hasRole } from "@/context/authRoles";
 import { referralKeys } from "@/lib/referralQueryKeys";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
@@ -104,10 +104,6 @@ export default function HospitalDashboard() {
     },
   });
 
-  const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
-    if (hospitalId) void queryClient.invalidateQueries({ queryKey: referralKeys.hospitalRoot(hospitalId) });
-  }, 400);
-
   useEffect(() => {
     if (!hospitalId) return;
     const ch = supabase
@@ -115,14 +111,15 @@ export default function HospitalDashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "referrals", filter: `hospital_id=eq.${hospitalId}` },
-        debouncedRealtime,
+        () => {
+          void queryClient.invalidateQueries({ queryKey: referralKeys.hospitalRoot(hospitalId) });
+        },
       )
       .subscribe();
     return () => {
-      cancelDebouncedRealtime();
       supabase.removeChannel(ch);
     };
-  }, [hospitalId, debouncedRealtime, cancelDebouncedRealtime]);
+  }, [hospitalId, queryClient]);
 
   const c = useMemo(
     () => ({

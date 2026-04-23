@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,18 +21,28 @@ interface ReferralRow {
   referral_number: string | null;
   unique_id: string | null;
   patient_name: string;
+  patient_age: number | null;
+  patient_gender: string | null;
+  patient_phone: string | null;
   status: string;
   urgency_level: string;
   created_at: string;
   assigned_doctor_id: string | null;
-  doctors: { full_name: string; specialty: string | null; phone: string | null; email: string | null } | null;
+  doctors: DoctorRow | null;
   hospitals: { name: string } | null;
   clinics: { name: string } | null;
 }
 
+interface DoctorRow {
+  id: string;
+  full_name: string;
+  specialty: string | null;
+  phone: string | null;
+  email: string | null;
+}
+
 export default function PatientReferralHistory({ portal }: { portal: "clinic" | "hospital" }) {
   const { patientId } = useParams();
-  const nav = useNavigate();
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [referrals, setReferrals] = useState<ReferralRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +54,58 @@ export default function PatientReferralHistory({ portal }: { portal: "clinic" | 
   const load = useCallback(async () => {
     if (!patientId) return;
     setLoading(true);
+    const { data: refs, error: rErr } = await supabase
+      .from("referrals")
+      .select(
+        "id, referral_number, unique_id, patient_name, patient_age, patient_gender, patient_phone, status, urgency_level, created_at, assigned_doctor_id, hospitals(name), clinics(name)",
+      )
+      .eq("patient_id", patientId)
+      .order("created_at", { ascending: false });
+
+    if (rErr) {
+      toast.error(safeClientError(rErr));
+      setPatient(null);
+      setReferrals([]);
+      setLoading(false);
+      return;
+    }
+
+    const normalizedRefs = ((refs ?? []) as unknown as Omit<ReferralRow, "doctors">[]).map((row) => ({
+      ...row,
+      doctors: null,
+    }));
+
+    const doctorIds = Array.from(
+      new Set(normalizedRefs.map((row) => row.assigned_doctor_id).filter((id): id is string => !!id)),
+    );
+    if (doctorIds.length > 0) {
+      const { data: doctorsData, error: doctorsErr } = await supabase
+        .from("doctors")
+        .select("id, full_name, specialty, phone, email")
+        .in("id", doctorIds);
+      if (doctorsErr) {
+        toast.error(safeClientError(doctorsErr));
+      } else {
+        const doctorById = new Map((doctorsData as DoctorRow[] | null | undefined)?.map((d) => [d.id, d]) ?? []);
+        for (const row of normalizedRefs) {
+          row.doctors = row.assigned_doctor_id ? doctorById.get(row.assigned_doctor_id) ?? null : null;
+        }
+      }
+    }
+
+    setReferrals(normalizedRefs);
+
+    const latest = normalizedRefs[0] ?? null;
+    const fallbackPatient: PatientRow | null = latest
+      ? {
+          id: patientId,
+          full_name: latest.patient_name,
+          age: latest.patient_age,
+          gender: latest.patient_gender,
+          phone: latest.patient_phone,
+        }
+      : null;
+
     const { data: p, error: pErr } = await supabase
       .from("patients")
       .select("id, full_name, age, gender, phone")
@@ -51,38 +113,31 @@ export default function PatientReferralHistory({ portal }: { portal: "clinic" | 
       .maybeSingle();
 
     if (pErr) {
-      toast.error(safeClientError(pErr));
-      setPatient(null);
-      setReferrals([]);
+      // Patient table can be stricter than referrals under RLS; preserve page usability.
+      if (fallbackPatient) {
+        setPatient(fallbackPatient);
+      } else {
+        toast.error(safeClientError(pErr));
+        setPatient(null);
+      }
       setLoading(false);
-      nav(-1);
       return;
     }
+
     if (!p) {
-      toast.error("Patient not found or you don't have access.");
-      setPatient(null);
-      setReferrals([]);
+      if (fallbackPatient) {
+        setPatient(fallbackPatient);
+      } else {
+        toast.error("Patient not found or you don't have access.");
+        setPatient(null);
+      }
       setLoading(false);
-      nav(-1);
       return;
     }
 
     setPatient(p as unknown as PatientRow);
-
-    const { data: refs, error: rErr } = await supabase
-      .from("referrals")
-      .select("id, referral_number, unique_id, patient_name, status, urgency_level, created_at, assigned_doctor_id, doctors(full_name,specialty,phone,email), hospitals(name), clinics(name)")
-      .eq("patient_id", patientId)
-      .order("created_at", { ascending: false });
-
-    if (rErr) {
-      toast.error(safeClientError(rErr));
-      setReferrals([]);
-    } else {
-      setReferrals((refs ?? []) as unknown as ReferralRow[]);
-    }
     setLoading(false);
-  }, [patientId, nav]);
+  }, [patientId]);
 
   useEffect(() => {
     void load();
