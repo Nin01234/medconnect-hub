@@ -10,6 +10,13 @@ function corsForRequest(req: Request): Record<string, string> {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  if (allowed.length === 0) {
+    return {
+      ...corsHeaders,
+      "Access-Control-Allow-Origin": "*",
+    };
+  }
+
   const isAllowed = !!origin && allowed.includes(origin);
   return {
     ...corsHeaders,
@@ -82,9 +89,12 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) return json(req, { error: "Unauthorized" }, 401);
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const ANON = Deno.env.get("SUPABASE_ANON_KEY");
+    const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!SUPABASE_URL) return fail(req, "Function misconfigured: missing SUPABASE_URL", 500);
+    if (!ANON) return fail(req, "Function misconfigured: missing SUPABASE_ANON_KEY", 500);
+    if (!SERVICE) return fail(req, "Function misconfigured: missing SUPABASE_SERVICE_ROLE_KEY", 500);
 
     const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
     const { data: userData, error: userErr } = await userClient.auth.getUser();

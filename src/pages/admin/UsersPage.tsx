@@ -15,6 +15,7 @@ import {
 } from "@/lib/validation";
 import { safeClientError, safeFunctionError } from "@/lib/safeError";
 import { sanitizeOptionalText, sanitizeText } from "@/lib/sanitize";
+import { sanitizePayload } from "@/lib/sanitizePayload";
 
 type UserStatus = "pending_approval" | "active" | "rejected" | "suspended";
 
@@ -26,6 +27,7 @@ interface UserRow {
   user_roles: { role: string }[];
 }
 interface OrgRef { id: string; name: string; }
+interface DepartmentRef { id: string; name: string; hospital_id: string; }
 
 const REGIONS = ["Greater Accra","Ashanti","Western","Central","Eastern","Volta","Northern","Upper East","Upper West","Bono","Bono East","Ahafo","Western North","Oti","Savannah","North East"];
 const CLINIC_TYPES = ["CHPS","Polyclinic","Private Clinic","Health Center","Other"];
@@ -35,6 +37,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [clinics, setClinics] = useState<OrgRef[]>([]);
   const [hospitals, setHospitals] = useState<OrgRef[]>([]);
+  const [departments, setDepartments] = useState<DepartmentRef[]>([]);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [filterRole, setFilterRole] = useState("all");
@@ -71,7 +74,17 @@ export default function UsersPage() {
     fnName: "admin-create-user" | "admin-manage-user",
     body: Record<string, unknown>,
   ) => {
-    const invoke = () => supabase.functions.invoke(fnName, { body });
+    const cleanBody = Object.fromEntries(
+      Object.entries(body).filter(([, value]) => value !== undefined),
+    );
+    const sanitizedBody = sanitizePayload(cleanBody);
+    const invoke = () =>
+      supabase.functions.invoke(fnName, {
+        body: sanitizedBody,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
     let result = await invoke();
 
     if (!result.error || !isUnauthorizedError(result.error)) {
@@ -98,18 +111,25 @@ export default function UsersPage() {
   };
 
   const load = async () => {
-    const [{ data: u, error: usersError }, { data: c, error: clinicsError }, { data: h, error: hospitalsError }] = await Promise.all([
+    const [
+      { data: u, error: usersError },
+      { data: c, error: clinicsError },
+      { data: h, error: hospitalsError },
+      { data: d, error: departmentsError },
+    ] = await Promise.all([
       supabase.from("profiles").select("*, clinics(name,region,city), hospitals(name,region,city), user_roles!user_roles_user_id_fkey(role)").order("created_at",{ascending:false}),
       supabase.from("clinics").select("id,name").order("name"),
       supabase.from("hospitals").select("id,name").order("name"),
+      supabase.from("departments").select("id,name,hospital_id").order("name"),
     ]);
-    if (usersError || clinicsError || hospitalsError) {
-      toast.error(safeClientError(usersError ?? clinicsError ?? hospitalsError));
+    if (usersError || clinicsError || hospitalsError || departmentsError) {
+      toast.error(safeClientError(usersError ?? clinicsError ?? hospitalsError ?? departmentsError));
       return;
     }
     setUsers((u ?? []) as unknown as UserRow[]);
     setClinics((c ?? []) as OrgRef[]);
     setHospitals((h ?? []) as OrgRef[]);
+    setDepartments((d ?? []) as DepartmentRef[]);
   };
   useEffect(() => { load(); }, []);
 
@@ -143,6 +163,8 @@ export default function UsersPage() {
     full_name: "", email: "", username: "", phone: "", password: "", role: "clinic_user",
     status: "active" as UserStatus,
     org_mode: "existing" as "existing" | "new", clinic_id: "", hospital_id: "",
+    department_id: "",
+    staff_id: "",
     new_org: { name: "", type: "Other", region: "", city: "", address: "", gps_code: "", contact: "", email: "", ownership_type: "Private", departments: [] as string[] },
   });
   useEffect(() => {
@@ -161,6 +183,8 @@ export default function UsersPage() {
       org_mode: form.org_mode,
       clinic_id: form.clinic_id,
       hospital_id: form.hospital_id,
+      department_id: form.department_id,
+      staff_id: form.staff_id,
       new_org:
         form.org_mode === "new"
           ? {
@@ -224,13 +248,17 @@ export default function UsersPage() {
             departments: (v.new_org.departments ?? []).slice(0, 20).map((d) => sanitizeText(d, 80)),
           };
         }
+        if (v.role === "hospital_staff") {
+          payload.department_id = v.department_id || undefined;
+          payload.staff_id = sanitizeText(v.staff_id || "", 50);
+        }
       }
       const { data, error } = await invokeAdminFunction("admin-create-user", payload);
       if (error) throw error;
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
       toast.success("User created");
       setOpen(false);
-      setForm({ full_name: "", email: "", username: "", phone: "", password: "", role: "clinic_user", status: "active", org_mode: "existing", clinic_id: "", hospital_id: "", new_org: { name: "", type: "Other", region: "", city: "", address: "", gps_code: "", contact: "", email: "", ownership_type: "Private", departments: [] } });
+      setForm({ full_name: "", email: "", username: "", phone: "", password: "", role: "clinic_user", status: "active", org_mode: "existing", clinic_id: "", hospital_id: "", department_id: "", staff_id: "", new_org: { name: "", type: "Other", region: "", city: "", address: "", gps_code: "", contact: "", email: "", ownership_type: "Private", departments: [] } });
       load();
     } catch (e) {
       toast.error(await safeFunctionError(e));
@@ -379,7 +407,7 @@ export default function UsersPage() {
             <div className="space-y-4">
               <Section title="Account">
                 <Two><F label="Full name *"><Input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} /></F>
-                <F label="Email (optional)"><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></F></Two>
+                <F label={form.role === "hospital_admin" ? "Email *" : "Email (optional)"}><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></F></Two>
                 <Two><F label="Username *"><Input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase() }))} placeholder="lowercase letters, numbers, . _ -" /></F>
                 <F label="Phone"><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></F></Two>
                 <F label="Password * (min 6)">
@@ -408,7 +436,20 @@ export default function UsersPage() {
                 </F>
                 <Two>
                   <F label="Role *">
-                    <Select value={form.role} onValueChange={v => setForm(f => ({ ...f, role: v, org_mode: "existing" }))}>
+                    <Select
+                      value={form.role}
+                      onValueChange={(v) =>
+                        setForm((f) => ({
+                          ...f,
+                          role: v,
+                          org_mode: "existing",
+                          clinic_id: "",
+                          hospital_id: "",
+                          department_id: "",
+                          staff_id: "",
+                        }))
+                      }
+                    >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="clinic_user">Clinic User</SelectItem>
@@ -434,17 +475,56 @@ export default function UsersPage() {
 
               {needsOrg && (
                 <Section title={`${orgKind === "clinic" ? "Clinic" : "Hospital"} Link`}>
-                  <Select value={form.org_mode} onValueChange={v => setForm(f => ({ ...f, org_mode: v as "existing" | "new" }))}>
+                  <Select
+                    value={form.org_mode}
+                    onValueChange={(v) => setForm((f) => ({ ...f, org_mode: v as "existing" | "new" }))}
+                    disabled={form.role === "hospital_staff"}
+                  >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent><SelectItem value="existing">Link to existing</SelectItem><SelectItem value="new">Create new</SelectItem></SelectContent>
                   </Select>
                   {form.org_mode === "existing" ? (
-                    <F label={orgKind === "clinic" ? "Clinic *" : "Hospital *"}>
-                      <Select value={orgKind === "clinic" ? form.clinic_id : form.hospital_id} onValueChange={v => setForm(f => ({ ...f, [orgKind === "clinic" ? "clinic_id" : "hospital_id"]: v }))}>
-                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                        <SelectContent>{(orgKind === "clinic" ? clinics : hospitals).map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </F>
+                    <>
+                      <F label={orgKind === "clinic" ? "Clinic *" : "Hospital *"}>
+                        <Select
+                          value={orgKind === "clinic" ? form.clinic_id : form.hospital_id}
+                          onValueChange={(v) =>
+                            setForm((f) => ({
+                              ...f,
+                              [orgKind === "clinic" ? "clinic_id" : "hospital_id"]: v,
+                              ...(orgKind === "hospital" ? { department_id: "" } : {}),
+                            }))
+                          }
+                        >
+                          <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                          <SelectContent>{(orgKind === "clinic" ? clinics : hospitals).map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </F>
+
+                      {form.role === "hospital_staff" && (
+                        <>
+                          <F label="Department *">
+                            <Select
+                              value={form.department_id}
+                              onValueChange={(v) => setForm((f) => ({ ...f, department_id: v }))}
+                              disabled={!form.hospital_id}
+                            >
+                              <SelectTrigger><SelectValue placeholder={form.hospital_id ? "Select…" : "Select a hospital first"} /></SelectTrigger>
+                              <SelectContent>
+                                {departments
+                                  .filter((d) => d.hospital_id === form.hospital_id)
+                                  .map((d) => (
+                                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          </F>
+                          <F label="Staff ID *">
+                            <Input value={form.staff_id} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))} />
+                          </F>
+                        </>
+                      )}
+                    </>
                   ) : (
                     <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
                       <Two>
@@ -487,7 +567,19 @@ export default function UsersPage() {
                 </Section>
               )}
 
-              <Button onClick={submit} variant="hero" className="w-full" disabled={busy || !form.full_name || !form.username || !form.password}>
+              <Button
+                onClick={submit}
+                variant="hero"
+                className="w-full"
+                disabled={
+                  busy ||
+                  !form.full_name ||
+                  !form.username ||
+                  !form.password ||
+                  (form.role === "hospital_admin" && !form.email.trim()) ||
+                  (form.role === "hospital_staff" && (!form.hospital_id || !form.department_id || !form.staff_id.trim()))
+                }
+              >
                 {busy ? "Creating…" : "Create user"}
               </Button>
             </div>

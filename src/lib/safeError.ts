@@ -47,13 +47,31 @@ export function safeClientError(err: unknown): string {
 
 /** Safe message for edge-function invoke errors (redacts verbose bodies in production). */
 export async function safeFunctionError(err: unknown): Promise<string> {
-  if (import.meta.env.DEV) {
-    if (err instanceof Error && err.message) return err.message;
-    const extracted = extractErrorMessage(err);
-    return extracted ?? GENERIC;
-  }
   const ctx = err as { context?: { status?: number; clone?: () => Response } };
   const status = ctx?.context?.status;
+
+  // In dev, Supabase function invoke errors often surface as the generic:
+  // "Edge Function returned a non-2xx status code". Prefer the response JSON.
+  if (import.meta.env.DEV) {
+    if (ctx?.context?.clone) {
+      try {
+        const payload = await ctx.context.clone().json();
+        const msg =
+          (typeof payload?.error === "string" && payload.error.trim() && payload.error) ||
+          (typeof payload?.message === "string" && payload.message.trim() && payload.message) ||
+          "";
+        if (msg) return status ? `${msg} (HTTP ${status})` : msg;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const extracted = extractErrorMessage(err);
+    if (extracted) return status ? `${extracted} (HTTP ${status})` : extracted;
+    if (status) return `Request failed (HTTP ${status}).`;
+    return GENERIC;
+  }
+
   if (status === 401) return "Session expired or unauthorized. Sign in again.";
   if (status === 403) return "You do not have permission for this action.";
   if (status && status >= 500) return GENERIC;

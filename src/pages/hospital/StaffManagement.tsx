@@ -11,6 +11,7 @@ import { Eye, EyeOff, KeyRound, Pencil, Plus, Power, Trash2 } from "lucide-react
 import { toast } from "sonner";
 import { adminCreateUserSchema, adminEditUserSchema, resetPasswordSchema } from "@/lib/validation";
 import { sanitizeOptionalText, sanitizeText } from "@/lib/sanitize";
+import { sanitizePayload } from "@/lib/sanitizePayload";
 import { safeClientError, safeFunctionError } from "@/lib/safeError";
 
 type StaffStatus = "pending_approval" | "active" | "rejected" | "suspended";
@@ -74,7 +75,17 @@ export default function StaffManagement() {
   };
 
   const invokeFn = async (fnName: "admin-create-user" | "admin-manage-user", body: Record<string, unknown>) => {
-    const invoke = () => supabase.functions.invoke(fnName, { body });
+    const cleanBody = Object.fromEntries(
+      Object.entries(body).filter(([, value]) => value !== undefined),
+    );
+    const sanitizedBody = sanitizePayload(cleanBody);
+    const invoke = () =>
+      supabase.functions.invoke(fnName, {
+        body: sanitizedBody,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
     let result = await invoke();
     if (!result.error || !isUnauthorizedError(result.error)) return result;
 
@@ -139,8 +150,20 @@ export default function StaffManagement() {
     );
   }, [rows, q]);
 
+  const canSubmitCreate =
+    !!form.full_name.trim() &&
+    !!form.username.trim() &&
+    !!form.password &&
+    !!form.staff_id.trim() &&
+    !!form.department_id;
+
   const createStaff = async () => {
     if (!profile?.hospital_id) return;
+    const selectedDepartment = departments.find((d) => d.id === form.department_id);
+    if (!selectedDepartment) {
+      toast.error("Please select a valid department for this hospital.");
+      return;
+    }
     const validated = adminCreateUserSchema.safeParse({
       full_name: form.full_name,
       email: form.email,
@@ -446,7 +469,7 @@ export default function StaffManagement() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={createStaff} variant="hero" className="w-full" disabled={busy}>
+              <Button onClick={createStaff} variant="hero" className="w-full" disabled={busy || !canSubmitCreate}>
                 {busy ? "Creating..." : "Create staff"}
               </Button>
             </div>

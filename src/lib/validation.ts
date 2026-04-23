@@ -147,6 +147,9 @@ export const adminCreateUserSchema = z
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Organization name is required", path: ["new_org", "name"] });
       }
     }
+    if (data.role === "hospital_admin" && data.email.trim() === "") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Email is required for hospital admin", path: ["email"] });
+    }
   });
 
 export const adminEditUserSchema = z

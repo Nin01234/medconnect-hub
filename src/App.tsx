@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -51,63 +51,81 @@ const queryClient = new QueryClient({
   },
 });
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <ThemeProvider>
-        <Toaster />
-        <Sonner />
-        <ThemeToggle />
-        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <AuthProvider>
-            <Suspense fallback={<FullPageLoader />}>
-              <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route path="/auth" element={<Auth />} />
-                <Route path="/terms" element={<Terms />} />
-                <Route path="/portal" element={<RequireAuth><PortalRouter /></RequireAuth>} />
+function warmPortalBundles() {
+  void Promise.allSettled([
+    import("./pages/PortalRouter"),
+    import("./layouts/ClinicLayout"),
+    import("./layouts/HospitalLayout"),
+    import("./layouts/AdminLayout"),
+  ]);
+}
 
-                <Route path="/clinic" element={<RequireRole roles={["clinic_user", "admin"]}><ClinicLayout /></RequireRole>}>
-                  <Route index element={<ClinicDashboard />} />
-                  <Route path="referrals/new" element={<CreateReferral />} />
-                  <Route path="referrals" element={<MyReferrals />} />
-                  <Route path="referrals/:id" element={<ReferralDetail portal="clinic" />} />
-                  <Route path="patients/:patientId" element={<PatientReferralHistory portal="clinic" />} />
-                  <Route path="messages" element={<ClinicMessages />} />
-                  <Route path="reset-password" element={<PortalResetPassword />} />
-                </Route>
+const App = () => {
+  useEffect(() => {
+    const idle = window.setTimeout(() => {
+      warmPortalBundles();
+    }, 1200);
+    return () => window.clearTimeout(idle);
+  }, []);
 
-                <Route path="/hospital" element={<RequireRole roles={["hospital_admin", "hospital_staff", "admin"]}><HospitalLayout /></RequireRole>}>
-                  <Route index element={<HospitalDashboard />} />
-                  <Route path="inbox" element={<HospitalInbox />} />
-                  <Route path="referrals/:id/review" element={<ReferralDetail portal="hospital" />} />
-                  <Route path="patients/:patientId" element={<PatientReferralHistory portal="hospital" />} />
-                  <Route path="assigned" element={<AssignedCases />} />
-                  <Route path="feedback" element={<FeedbackCenter />} />
-                  <Route path="departments" element={<RequireRole roles={["hospital_admin", "admin"]}><Departments /></RequireRole>} />
-                  <Route path="staff" element={<StaffManagement />} />
-                  <Route path="messages" element={<HospitalMessages />} />
-                  <Route path="reset-password" element={<PortalResetPassword />} />
-                </Route>
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <ThemeProvider>
+          <Toaster />
+          <Sonner />
+          <ThemeToggle />
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <AuthProvider>
+              <Suspense fallback={<FullPageLoader />}>
+                <Routes>
+                  <Route path="/" element={<Landing />} />
+                  <Route path="/auth" element={<Auth />} />
+                  <Route path="/terms" element={<Terms />} />
+                  <Route path="/portal" element={<RequireAuth><PortalRouter /></RequireAuth>} />
 
-                <Route path="/admin" element={<RequireRole roles={["admin"]}><AdminLayout /></RequireRole>}>
-                  <Route index element={<AdminDashboard />} />
-                  <Route path="users" element={<UsersPage />} />
-                  <Route path="approvals" element={<PendingApprovalsPage />} />
-                  <Route path="clinics" element={<ClinicsPage />} />
-                  <Route path="hospitals" element={<HospitalsPage />} />
-                  <Route path="roles" element={<RolesPage />} />
-                  <Route path="audit" element={<AuditPage />} />
-                </Route>
+                  <Route path="/clinic" element={<RequireRole roles={["clinic_user", "admin"]}><ClinicLayout /></RequireRole>}>
+                    <Route index element={<ClinicDashboard />} />
+                    <Route path="referrals/new" element={<CreateReferral />} />
+                    <Route path="referrals" element={<MyReferrals />} />
+                    <Route path="referrals/:id" element={<ReferralDetail portal="clinic" />} />
+                    <Route path="patients/:patientId" element={<PatientReferralHistory portal="clinic" />} />
+                    <Route path="messages" element={<ClinicMessages />} />
+                    <Route path="reset-password" element={<PortalResetPassword />} />
+                  </Route>
 
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-          </AuthProvider>
-        </BrowserRouter>
-      </ThemeProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+                  <Route path="/hospital" element={<RequireRole roles={["hospital_admin", "hospital_staff", "admin"]}><HospitalLayout /></RequireRole>}>
+                    <Route index element={<HospitalDashboard />} />
+                    <Route path="inbox" element={<HospitalInbox />} />
+                    <Route path="referrals/:id/review" element={<ReferralDetail portal="hospital" />} />
+                    <Route path="patients/:patientId" element={<PatientReferralHistory portal="hospital" />} />
+                    <Route path="assigned" element={<AssignedCases />} />
+                    <Route path="feedback" element={<FeedbackCenter />} />
+                    <Route path="departments" element={<RequireRole roles={["hospital_admin", "admin"]}><Departments /></RequireRole>} />
+                    <Route path="staff" element={<StaffManagement />} />
+                    <Route path="messages" element={<HospitalMessages />} />
+                    <Route path="reset-password" element={<PortalResetPassword />} />
+                  </Route>
+
+                  <Route path="/admin" element={<RequireRole roles={["admin"]}><AdminLayout /></RequireRole>}>
+                    <Route index element={<AdminDashboard />} />
+                    <Route path="users" element={<UsersPage />} />
+                    <Route path="approvals" element={<PendingApprovalsPage />} />
+                    <Route path="clinics" element={<ClinicsPage />} />
+                    <Route path="hospitals" element={<HospitalsPage />} />
+                    <Route path="roles" element={<RolesPage />} />
+                    <Route path="audit" element={<AuditPage />} />
+                  </Route>
+
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+            </AuthProvider>
+          </BrowserRouter>
+        </ThemeProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

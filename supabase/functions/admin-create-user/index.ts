@@ -10,6 +10,15 @@ function corsForRequest(req: Request): Record<string, string> {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  // If APP_ORIGIN isn't configured, default to permissive CORS so local/dev
+  // callers aren't blocked by "null" origins.
+  if (allowed.length === 0) {
+    return {
+      ...corsHeaders,
+      "Access-Control-Allow-Origin": "*",
+    };
+  }
+
   const isAllowed = !!origin && allowed.includes(origin);
   return {
     ...corsHeaders,
@@ -81,6 +90,14 @@ function isAuthUserExistsError(error: unknown): boolean {
   return /already been registered|already exists|user already registered/i.test(msg);
 }
 
+function safeAuthErrorMessage(error: unknown): string | null {
+  const msg = String((error as { message?: string })?.message ?? "").trim();
+  if (!msg) return null;
+  if (/database|postgres|internal|sql/i.test(msg)) return null;
+  if (msg.length > 220) return null;
+  return msg;
+}
+
 Deno.serve(async (req) => {
   const cors = corsForRequest(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -91,9 +108,12 @@ Deno.serve(async (req) => {
       return json(req, { error: "Unauthorized" }, 401);
     }
 
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-    const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+    const ANON = Deno.env.get('SUPABASE_ANON_KEY');
+    const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!SUPABASE_URL) return fail(req, "Function misconfigured: missing SUPABASE_URL", 500);
+    if (!ANON) return fail(req, "Function misconfigured: missing SUPABASE_ANON_KEY", 500);
+    if (!SERVICE) return fail(req, "Function misconfigured: missing SUPABASE_SERVICE_ROLE_KEY", 500);
 
     // Verify caller role
     const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
@@ -166,6 +186,10 @@ Deno.serve(async (req) => {
       body.hospital_id = callerHospitalId;
     }
 
+    if (body.role === "hospital_admin" && !body.hospital_id && !body.new_hospital) {
+      return fail(req, "Hospital is required for hospital admin");
+    }
+
     const resolvedEmail = body.email || fallbackEmailFromUsername(body.username);
 
     // Resolve clinic
@@ -182,15 +206,32 @@ Deno.serve(async (req) => {
     // Resolve hospital
     let hospital_id = body.hospital_id ?? null;
     if ((body.role === 'hospital_admin' || body.role === 'hospital_staff') && !hospital_id && body.new_hospital) {
-      const { data: h, error: e } = await admin.from('hospitals').insert(body.new_hospital).select('id').single();
+      const { departments: requestedDepartments, ...hospitalInsert } = body.new_hospital;
+      const { data: h, error: e } = await admin.from('hospitals').insert(hospitalInsert).select('id').single();
       if (e) {
         console.error(e);
         return fail(req, "Hospital create failed");
       }
       hospital_id = h.id;
+      if ((requestedDepartments ?? []).length > 0) {
+        const departmentRows = requestedDepartments
+          .map((name) => cap(name, 80))
+          .filter(Boolean)
+          .slice(0, 20)
+          .map((name) => ({ hospital_id, name, status: "active" }));
+        if (departmentRows.length > 0) {
+          const { error: depInsertErr } = await admin.from("departments").insert(departmentRows);
+          if (depInsertErr) {
+            console.error(depInsertErr);
+            return fail(req, "Hospital created but departments could not be added");
+          }
+        }
+      }
     }
     if (body.role === "hospital_staff") {
       if (!hospital_id) return fail(req, "Hospital is required for staff");
+      if (!body.department_id) return fail(req, "Department is required for hospital staff");
+      if (!body.staff_id || !body.staff_id.trim()) return fail(req, "Staff ID is required");
       const { data: dep } = await admin
         .from("departments")
         .select("id,hospital_id")
@@ -211,22 +252,32 @@ Deno.serve(async (req) => {
       if (isDuplicateError(createErr)) {
         return fail(req, "A user with this email or username already exists", 409);
       }
+      const authMsg = safeAuthErrorMessage(createErr);
+      if (authMsg) return fail(req, authMsg);
       return fail(req, "Could not create user account");
     }
 
     const newUserId = created.user.id;
 
     // Update profile (trigger created the row already)
-    const { error: profileErr } = await admin.from('profiles').update({
+    // Keep updates minimal so older schemas (missing optional columns) don't hard-fail.
+    const profileUpdate: Record<string, unknown> = {
       full_name: body.full_name,
       phone: body.phone,
       username: body.username,
-      status: body.status ?? 'active',
+      status: body.status ?? "active",
       clinic_id,
       hospital_id,
-      department_id: body.department_id ?? null,
-      staff_id: body.staff_id?.trim() || null,
-    }).eq('id', newUserId);
+    };
+    if (body.role === "hospital_staff") {
+      profileUpdate.department_id = body.department_id ?? null;
+      profileUpdate.staff_id = body.staff_id?.trim() || null;
+    }
+
+    const { error: profileErr } = await admin
+      .from("profiles")
+      .update(profileUpdate)
+      .eq("id", newUserId);
     if (profileErr) {
       console.error(profileErr);
       await admin.auth.admin.deleteUser(newUserId);
