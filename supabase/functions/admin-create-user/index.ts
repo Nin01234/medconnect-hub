@@ -3,6 +3,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX_REQUESTS = 12;
+const MAX_BODY_BYTES = 50_000;
+const rateBucket = new Map<string, number[]>();
 
 function corsForRequest(req: Request): Record<string, string> {
   const origin = req.headers.get("origin");
@@ -10,14 +14,7 @@ function corsForRequest(req: Request): Record<string, string> {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  // If APP_ORIGIN isn't configured, default to permissive CORS so local/dev
-  // callers aren't blocked by "null" origins.
-  if (allowed.length === 0) {
-    return {
-      ...corsHeaders,
-      "Access-Control-Allow-Origin": "*",
-    };
-  }
+  if (allowed.length === 0) return { ...corsHeaders, "Access-Control-Allow-Origin": "null" };
 
   const isVercelPreview = !!origin && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
   const isAllowed = !!origin && (allowed.includes(origin) || isVercelPreview);
@@ -26,6 +23,46 @@ function corsForRequest(req: Request): Record<string, string> {
     "Access-Control-Allow-Origin": isAllowed ? origin : "null",
     Vary: "Origin",
   };
+}
+
+function getClientIp(req: Request): string {
+  const raw =
+    req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-real-ip") ||
+    req.headers.get("x-forwarded-for") ||
+    "unknown";
+  return cap(String(raw).split(",")[0] ?? "unknown", 80).toLowerCase();
+}
+
+function enforceRateLimit(req: Request, callerId: string): Response | null {
+  const now = Date.now();
+  const key = `${callerId}:${getClientIp(req)}`;
+  const recent = (rateBucket.get(key) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (recent.length >= RATE_MAX_REQUESTS) {
+    return json(req, { error: "Too many requests. Please wait and try again." }, 429);
+  }
+  recent.push(now);
+  rateBucket.set(key, recent);
+  for (const [bucketKey, timestamps] of rateBucket.entries()) {
+    const kept = timestamps.filter((t) => now - t < RATE_WINDOW_MS);
+    if (kept.length === 0) rateBucket.delete(bucketKey);
+    else if (kept.length !== timestamps.length) rateBucket.set(bucketKey, kept);
+  }
+  return null;
+}
+
+async function parsePayload(req: Request): Promise<Payload> {
+  const contentLength = Number(req.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+    throw new Error("Payload too large");
+  }
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new Error("Invalid content type");
+  }
+  const body = (await req.json()) as Payload;
+  if (!body || typeof body !== "object") throw new Error("Invalid request payload");
+  return body;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -132,7 +169,10 @@ Deno.serve(async (req) => {
     const isHospitalAdmin = callerRoles.has('hospital_admin');
     if (!isAdmin && !isHospitalAdmin) return json(req, { error: "Forbidden: admin role required" }, 403);
 
-    const body = (await req.json()) as Payload;
+    const limit = enforceRateLimit(req, callerId);
+    if (limit) return limit;
+
+    const body = await parsePayload(req);
     if (!body.username || !body.password || !body.full_name || !body.role) {
       return fail(req, "Missing required fields");
     }
@@ -340,6 +380,11 @@ Deno.serve(async (req) => {
     return json(req, { ok: true, user_id: newUserId, clinic_id, hospital_id });
   } catch (e) {
     console.error(e);
+    const message = e instanceof Error ? e.message : "";
+    if (message === "Payload too large") return json(req, { error: "Payload too large" }, 413);
+    if (message === "Invalid content type" || message === "Invalid request payload") {
+      return json(req, { error: "Invalid request payload" }, 400);
+    }
     return json(req, { error: "Internal server error" }, 500);
   }
 });
