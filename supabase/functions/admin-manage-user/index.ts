@@ -1,7 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { captureEdgeException } from "../_shared/sentry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_REQUESTS = 20;
@@ -16,8 +18,7 @@ function corsForRequest(req: Request): Record<string, string> {
     .filter(Boolean);
   if (allowed.length === 0) return { ...corsHeaders, "Access-Control-Allow-Origin": "null" };
 
-  const isVercelPreview = !!origin && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
-  const isAllowed = !!origin && (allowed.includes(origin) || isVercelPreview);
+  const isAllowed = !!origin && allowed.includes(origin);
   return {
     ...corsHeaders,
     "Access-Control-Allow-Origin": isAllowed ? origin : "null",
@@ -122,8 +123,10 @@ function isAuthNotFoundError(error: unknown): boolean {
 }
 
 Deno.serve(async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
   const cors = corsForRequest(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method !== "POST") return json(req, { error: "Method not allowed" }, 405);
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -258,6 +261,11 @@ Deno.serve(async (req) => {
       const { error } = await admin.from("profiles").update({ status: "active" }).eq("id", body.user_id);
       if (error) {
         console.error(error);
+        void captureEdgeException(error, {
+          functionName: "admin-manage-user",
+          requestId,
+          extra: { stage: "approve_user" },
+        });
         return fail(req, "Could not approve user");
       }
     }
@@ -266,11 +274,11 @@ Deno.serve(async (req) => {
       const role = body.role;
       const profileOrgUpdate =
         role === "clinic_user" || role === "clinic_admin" || role === "clinic_staff"
-          ? { clinic_id: body.clinic_id ?? null, hospital_id: null }
+          ? { role, clinic_id: body.clinic_id ?? null, hospital_id: null }
           : role === "hospital_admin" || role === "hospital_staff"
-            ? { hospital_id: body.hospital_id ?? null, clinic_id: null }
+            ? { role, hospital_id: body.hospital_id ?? null, clinic_id: null }
             : role === "admin"
-              ? { clinic_id: null, hospital_id: null }
+              ? { role, clinic_id: null, hospital_id: null }
               : {};
 
       // Only include fields the caller actually sent, so status-only updates
@@ -288,6 +296,11 @@ Deno.serve(async (req) => {
       const { error: profileError } = await admin.from("profiles").update(profileUpdate).eq("id", body.user_id);
       if (profileError) {
         console.error(profileError);
+        void captureEdgeException(profileError, {
+          functionName: "admin-manage-user",
+          requestId,
+          extra: { stage: "update_profile" },
+        });
         return fail(req, "Could not update user profile");
       }
 
@@ -295,6 +308,11 @@ Deno.serve(async (req) => {
         const { error: authError } = await admin.auth.admin.updateUserById(body.user_id, { email: body.email });
         if (authError) {
           console.error(authError);
+          void captureEdgeException(authError, {
+            functionName: "admin-manage-user",
+            requestId,
+            extra: { stage: "update_auth_email" },
+          });
           return fail(req, "Could not update auth email");
         }
       }
@@ -303,6 +321,11 @@ Deno.serve(async (req) => {
         const { error: roleErr } = await admin.from("user_roles").insert({ user_id: body.user_id, role: body.role });
         if (roleErr) {
           console.error(roleErr);
+          void captureEdgeException(roleErr, {
+            functionName: "admin-manage-user",
+            requestId,
+            extra: { stage: "update_role" },
+          });
           return fail(req, "Could not update user role");
         }
       }
@@ -314,6 +337,11 @@ Deno.serve(async (req) => {
       const { error } = await admin.auth.admin.updateUserById(body.user_id, { password: pw });
       if (error) {
         console.error(error);
+        void captureEdgeException(error, {
+          functionName: "admin-manage-user",
+          requestId,
+          extra: { stage: "reset_password" },
+        });
         if (isAuthNotFoundError(error)) return fail(req, "Target user account no longer exists", 404);
         return fail(req, "Could not reset password");
       }
@@ -323,6 +351,11 @@ Deno.serve(async (req) => {
       const { error } = await admin.auth.admin.deleteUser(body.user_id);
       if (error) {
         console.error(error);
+        void captureEdgeException(error, {
+          functionName: "admin-manage-user",
+          requestId,
+          extra: { stage: "delete_user" },
+        });
         if (!isAuthNotFoundError(error)) {
           return fail(req, "Could not delete user");
         }
@@ -335,10 +368,20 @@ Deno.serve(async (req) => {
         ]);
         if (profileCleanupErr) {
           console.error(profileCleanupErr);
+          void captureEdgeException(profileCleanupErr, {
+            functionName: "admin-manage-user",
+            requestId,
+            extra: { stage: "cleanup_profile" },
+          });
           return fail(req, "Could not clean up orphan profile");
         }
         if (roleCleanupErr) {
           console.error(roleCleanupErr);
+          void captureEdgeException(roleCleanupErr, {
+            functionName: "admin-manage-user",
+            requestId,
+            extra: { stage: "cleanup_roles" },
+          });
           return fail(req, "Could not clean up orphan role rows");
         }
       }
@@ -361,6 +404,10 @@ Deno.serve(async (req) => {
     return json(req, { ok: true });
   } catch (e) {
     console.error(e);
+    await captureEdgeException(e, {
+      functionName: "admin-manage-user",
+      requestId,
+    });
     const message = e instanceof Error ? e.message : "";
     if (message === "Payload too large") return json(req, { error: "Payload too large" }, 413);
     if (message === "Invalid content type" || message === "Invalid request payload") {

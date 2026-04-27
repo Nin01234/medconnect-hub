@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { captureEdgeException } from "../_shared/sentry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -70,6 +71,7 @@ function json(req: Request, body: unknown, status = 200) {
 }
 
 Deno.serve(async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
   const cors = corsForRequest(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json(req, { error: "Method not allowed" }, 405);
@@ -113,7 +115,11 @@ Deno.serve(async (req) => {
     }
 
     return json(req, { email });
-  } catch (_e) {
+  } catch (error) {
+    await captureEdgeException(error, {
+      functionName: "resolve-login-identifier",
+      requestId,
+    });
     return json(req, { error: "Internal server error" }, 500);
   }
 });

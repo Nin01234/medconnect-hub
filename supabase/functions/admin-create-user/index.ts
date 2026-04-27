@@ -1,7 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { captureEdgeException } from "../_shared/sentry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_REQUESTS = 12;
@@ -16,8 +18,7 @@ function corsForRequest(req: Request): Record<string, string> {
     .filter(Boolean);
   if (allowed.length === 0) return { ...corsHeaders, "Access-Control-Allow-Origin": "null" };
 
-  const isVercelPreview = !!origin && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
-  const isAllowed = !!origin && (allowed.includes(origin) || isVercelPreview);
+  const isAllowed = !!origin && allowed.includes(origin);
   return {
     ...corsHeaders,
     "Access-Control-Allow-Origin": isAllowed ? origin : "null",
@@ -137,8 +138,10 @@ function safeAuthErrorMessage(error: unknown): string | null {
 }
 
 Deno.serve(async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
   const cors = corsForRequest(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method !== "POST") return json(req, { error: "Method not allowed" }, 405);
 
   try {
     const authHeader = req.headers.get('Authorization');
@@ -260,6 +263,11 @@ Deno.serve(async (req) => {
       const { data: c, error: e } = await admin.from('clinics').insert(body.new_clinic).select('id').single();
       if (e) {
         console.error(e);
+        void captureEdgeException(e, {
+          functionName: "admin-create-user",
+          requestId,
+          extra: { stage: "create_clinic" },
+        });
         return fail(req, "Clinic create failed");
       }
       clinic_id = c.id;
@@ -272,6 +280,11 @@ Deno.serve(async (req) => {
       const { data: h, error: e } = await admin.from('hospitals').insert(hospitalInsert).select('id').single();
       if (e) {
         console.error(e);
+        void captureEdgeException(e, {
+          functionName: "admin-create-user",
+          requestId,
+          extra: { stage: "create_hospital" },
+        });
         return fail(req, "Hospital create failed");
       }
       hospital_id = h.id;
@@ -285,6 +298,11 @@ Deno.serve(async (req) => {
           const { error: depInsertErr } = await admin.from("departments").insert(departmentRows);
           if (depInsertErr) {
             console.error(depInsertErr);
+            void captureEdgeException(depInsertErr, {
+              functionName: "admin-create-user",
+              requestId,
+              extra: { stage: "create_departments" },
+            });
             return fail(req, "Hospital created but departments could not be added");
           }
         }
@@ -315,6 +333,11 @@ Deno.serve(async (req) => {
     });
     if (createErr || !created.user) {
       console.error(createErr);
+      void captureEdgeException(createErr, {
+        functionName: "admin-create-user",
+        requestId,
+        extra: { stage: "create_auth_user" },
+      });
       if (isDuplicateError(createErr)) {
         return fail(req, "A user with this email or username already exists", 409);
       }
@@ -331,6 +354,7 @@ Deno.serve(async (req) => {
       full_name: body.full_name,
       phone: body.phone,
       username: body.username,
+      role: body.role,
       status: body.status ?? "active",
       clinic_id,
       hospital_id,
@@ -346,6 +370,11 @@ Deno.serve(async (req) => {
       .eq("id", newUserId);
     if (profileErr) {
       console.error(profileErr);
+      void captureEdgeException(profileErr, {
+        functionName: "admin-create-user",
+        requestId,
+        extra: { stage: "update_profile" },
+      });
       await admin.auth.admin.deleteUser(newUserId);
       if (isDuplicateError(profileErr)) {
         return fail(req, "Username is already in use. Try a different one.", 409);
@@ -390,12 +419,22 @@ Deno.serve(async (req) => {
     const { error: roleDeleteErr } = await admin.from('user_roles').delete().eq('user_id', newUserId);
     if (roleDeleteErr) {
       console.error(roleDeleteErr);
+      void captureEdgeException(roleDeleteErr, {
+        functionName: "admin-create-user",
+        requestId,
+        extra: { stage: "delete_default_role" },
+      });
       await admin.auth.admin.deleteUser(newUserId);
       return fail(req, "Could not assign user role");
     }
     const { error: roleInsertErr } = await admin.from('user_roles').insert({ user_id: newUserId, role: body.role });
     if (roleInsertErr) {
       console.error(roleInsertErr);
+      void captureEdgeException(roleInsertErr, {
+        functionName: "admin-create-user",
+        requestId,
+        extra: { stage: "insert_role" },
+      });
       await admin.auth.admin.deleteUser(newUserId);
       if (isDuplicateError(roleInsertErr) || isAuthUserExistsError(roleInsertErr)) {
         return fail(req, "A conflicting user role already exists. Try again.", 409);
@@ -421,6 +460,10 @@ Deno.serve(async (req) => {
     return json(req, { ok: true, user_id: newUserId, clinic_id, hospital_id });
   } catch (e) {
     console.error(e);
+    await captureEdgeException(e, {
+      functionName: "admin-create-user",
+      requestId,
+    });
     const message = e instanceof Error ? e.message : "";
     if (message === "Payload too large") return json(req, { error: "Payload too large" }, 413);
     if (message === "Invalid content type" || message === "Invalid request payload") {

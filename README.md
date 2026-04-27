@@ -81,7 +81,19 @@ npx supabase functions deploy admin-create-user
 npx supabase functions deploy admin-manage-user
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` are auto-injected by Supabase for these functions — no extra config in the dashboard for standard deploys.
+`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` are auto-injected by Supabase for these functions.
+
+To enable Sentry for backend/edge errors, set a function secret:
+
+```bash
+npx supabase secrets set SENTRY_DSN=https://<key>@o<org>.ingest.sentry.io/<project>
+```
+
+Optional environment metadata:
+
+```bash
+npx supabase secrets set ENVIRONMENT=production
+```
 
 ### 5. Configure auth
 
