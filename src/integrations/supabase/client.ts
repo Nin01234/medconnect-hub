@@ -54,6 +54,9 @@ const buildClient = () =>
 type MutableSupabaseClient = SupabaseClient<Database> & {
   from: (relation: string) => unknown;
   rpc: (fn: string, args?: Record<string, unknown>, options?: unknown) => unknown;
+  functions: {
+    invoke: (fn: string, options?: { body?: unknown; [key: string]: unknown }) => unknown;
+  };
 };
 
 function patchWriteSanitization(client: SupabaseClient<Database>): SupabaseClient<Database> {
@@ -88,6 +91,15 @@ function patchWriteSanitization(client: SupabaseClient<Database>): SupabaseClien
     const sanitizedArgs = args ? sanitizePayload(args) : args;
     return originalRpc(fn, sanitizedArgs, options);
   }) as MutableSupabaseClient["rpc"];
+
+  const originalInvoke = mutableClient.functions.invoke.bind(mutableClient.functions);
+  mutableClient.functions.invoke = ((fn: string, options?: { body?: unknown; [key: string]: unknown }) => {
+    if (!options || !("body" in options)) {
+      return originalInvoke(fn, options);
+    }
+    const sanitizedBody = sanitizePayload(options.body);
+    return originalInvoke(fn, { ...options, body: sanitizedBody });
+  }) as MutableSupabaseClient["functions"]["invoke"];
 
   mutableClient.__writesSanitized = true;
   return mutableClient;
