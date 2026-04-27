@@ -1,4 +1,5 @@
-import { useAuth, hasRole, type AppRole } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
+import { hasRole, type AppRole } from "@/context/authRoles";
 import { Navigate } from "react-router-dom";
 import { FullPageLoader } from "@/components/Guards";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,7 +38,7 @@ export default function PortalRouter() {
     if (!profile?.hospital_id) return <NotLinked role="hospital_staff" />;
     return <Navigate to="/hospital" replace />;
   }
-  if (hasRole(roles, "clinic_user")) {
+  if (hasRole(roles, "clinic_user", "clinic_admin", "clinic_staff")) {
     if (!profile?.clinic_id) return <NotLinked role="clinic_user" />;
     return <Navigate to="/clinic" replace />;
   }
@@ -83,8 +84,10 @@ function NotLinked({ role }: { role?: AppRole }) {
   const { signOut, refresh } = useAuth();
   const [checking, setChecking] = useState(false);
   const roleLabel =
-    role === "clinic_user"
+    role === "clinic_user" || role === "clinic_staff"
       ? "Clinic User"
+      : role === "clinic_admin"
+        ? "Clinic Admin"
       : role === "hospital_admin"
         ? "Hospital Admin"
         : role === "hospital_staff"

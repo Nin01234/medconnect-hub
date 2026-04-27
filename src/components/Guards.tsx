@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
-import { useAuth, hasRole, type AppRole } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
+import { hasRole, type AppRole } from "@/context/authRoles";
 import { ReactNode } from "react";
 
 export function RequireAuth({ children }: { children: ReactNode }) {

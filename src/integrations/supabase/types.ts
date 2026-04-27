@@ -657,6 +657,8 @@ export type Database = {
         | "admin"
         | "hospital_admin"
         | "hospital_staff"
+        | "clinic_admin"
+        | "clinic_staff"
         | "clinic_user"
         | "doctor"
       clinic_type:
@@ -817,6 +819,8 @@ export const Constants = {
         "admin",
         "hospital_admin",
         "hospital_staff",
+        "clinic_admin",
+        "clinic_staff",
         "clinic_user",
         "doctor",
       ],

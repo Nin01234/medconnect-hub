@@ -34,7 +34,7 @@ export default function Landing() {
     if (user) {
       if (hasRole(roles, "admin")) nav("/admin", { replace: true });
       else if (hasRole(roles, "hospital_admin", "hospital_staff")) nav("/hospital", { replace: true });
-      else if (hasRole(roles, "clinic_user")) nav("/clinic", { replace: true });
+      else if (hasRole(roles, "clinic_user", "clinic_admin", "clinic_staff")) nav("/clinic", { replace: true });
     }
   }, [user, roles, loading, nav]);
 

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -8,7 +8,6 @@ import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { FullPageLoader, RequireAuth, RequireRole } from "@/components/Guards";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { warmPortalBundles } from "@/lib/routeWarmup";
 
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Landing = lazy(() => import("./pages/Landing"));
@@ -23,6 +22,7 @@ const ClinicDashboard = lazy(() => import("./pages/clinic/ClinicDashboard"));
 const CreateReferral = lazy(() => import("./pages/clinic/CreateReferral"));
 const MyReferrals = lazy(() => import("./pages/clinic/MyReferrals"));
 const ClinicMessages = lazy(() => import("./pages/clinic/ClinicMessages"));
+const ClinicStaffManagement = lazy(() => import("./pages/clinic/ClinicStaffManagement"));
 const HospitalDashboard = lazy(() => import("./pages/hospital/HospitalDashboard"));
 const HospitalInbox = lazy(() => import("./pages/hospital/HospitalInbox"));
 const AssignedCases = lazy(() => import("./pages/hospital/AssignedCases"));
@@ -59,13 +59,6 @@ const queryClient = new QueryClient({
 });
 
 const App = () => {
-  useEffect(() => {
-    const idle = window.setTimeout(() => {
-      warmPortalBundles();
-    }, 1200);
-    return () => window.clearTimeout(idle);
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -83,13 +76,14 @@ const App = () => {
                   <Route path="/terms" element={<Terms />} />
                   <Route path="/portal" element={<RequireAuth><PortalRouter /></RequireAuth>} />
 
-                  <Route path="/clinic" element={<RequireRole roles={["clinic_user", "admin"]}><ClinicLayout /></RequireRole>}>
+                  <Route path="/clinic" element={<RequireRole roles={["clinic_user", "clinic_admin", "clinic_staff", "admin"]}><ClinicLayout /></RequireRole>}>
                     <Route index element={<ClinicDashboard />} />
                     <Route path="referrals/new" element={<CreateReferral />} />
                     <Route path="referrals" element={<MyReferrals />} />
                     <Route path="referrals/:id" element={<ReferralDetail portal="clinic" />} />
                     <Route path="patients/:patientId" element={<PatientReferralHistory portal="clinic" />} />
                     <Route path="messages" element={<ClinicMessages />} />
+                    <Route path="staff" element={<RequireRole roles={["clinic_admin", "admin"]}><ClinicStaffManagement /></RequireRole>} />
                     <Route path="reset-password" element={<PortalResetPassword />} />
                   </Route>
 

@@ -1,23 +1,16 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, FilePlus2, ListChecks, MessageSquare, LogOut, Stethoscope, Menu, PanelLeft, PanelLeftClose, KeyRound } from "lucide-react";
+import { LayoutDashboard, FilePlus2, ListChecks, MessageSquare, LogOut, Stethoscope, Menu, PanelLeft, PanelLeftClose, KeyRound, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { BRAND } from "@/lib/brand";
 import { PortalSearch } from "@/components/PortalSearch";
-
-const links = [
-  { to: "/clinic", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/clinic/referrals/new", label: "Create Referral", icon: FilePlus2, end: true },
-  { to: "/clinic/referrals", label: "My Referrals", icon: ListChecks, end: true },
-  { to: "/clinic/messages", label: "Messages & feedback", icon: MessageSquare },
-  { to: "/clinic/reset-password", label: "Reset password", icon: KeyRound },
-];
+import { hasRole } from "@/context/authRoles";
 
 export default function ClinicLayout() {
-  const { profile, signOut } = useAuth();
+  const { profile, roles, signOut } = useAuth();
   const nav = useNavigate();
   const isLg = useMediaQuery("(min-width: 1024px)");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -34,6 +27,16 @@ export default function ClinicLayout() {
       document.body.style.overflow = "";
     };
   }, [isLg, mobileOpen]);
+
+  const canManageStaff = hasRole(roles, "clinic_admin", "admin");
+  const links = [
+    { to: "/clinic", label: "Dashboard", icon: LayoutDashboard, end: true },
+    { to: "/clinic/referrals/new", label: "Create Referral", icon: FilePlus2, end: true },
+    { to: "/clinic/referrals", label: "My Referrals", icon: ListChecks, end: true },
+    { to: "/clinic/messages", label: "Messages & feedback", icon: MessageSquare },
+    ...(canManageStaff ? [{ to: "/clinic/staff", label: "Staff Management", icon: Users, end: true }] : []),
+    { to: "/clinic/reset-password", label: "Reset password", icon: KeyRound },
+  ];
 
   return (
     <div className="min-h-screen min-h-[100dvh] bg-gradient-subtle">
@@ -75,7 +78,7 @@ export default function ClinicLayout() {
             </div>
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium leading-tight">{profile?.full_name ?? "—"}</p>
-              <p className="text-xs text-muted-foreground leading-tight">Clinic user</p>
+              <p className="text-xs text-muted-foreground leading-tight">{hasRole(roles, "clinic_admin") ? "Clinic Admin" : "Clinic User"}</p>
             </div>
             <Button variant="ghost" size="icon" onClick={() => signOut().then(() => nav("/"))} aria-label="Sign out">
               <LogOut className="h-4 w-4" />

@@ -139,3 +139,5 @@ npm test
 ```
 cd medconnect-hub
 npm run dev
+
+npm run benchmark:quick

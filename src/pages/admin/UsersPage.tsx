@@ -51,7 +51,7 @@ export default function UsersPage() {
     email: "",
     username: "",
     phone: "",
-    role: "clinic_user",
+    role: "clinic_admin",
     status: "active" as UserStatus,
     clinic_id: "",
     hospital_id: "",
@@ -160,7 +160,7 @@ export default function UsersPage() {
 
   // Form state
   const [form, setForm] = useState({
-    full_name: "", email: "", username: "", phone: "", password: "", role: "clinic_user",
+    full_name: "", email: "", username: "", phone: "", password: "", role: "clinic_admin",
     status: "active" as UserStatus,
     org_mode: "existing" as "existing" | "new", clinic_id: "", hospital_id: "",
     department_id: "",
@@ -218,7 +218,7 @@ export default function UsersPage() {
       };
       const normalizedEmail = sanitizeOptionalText(v.email || undefined, 320)?.toLowerCase();
       if (normalizedEmail) payload.email = normalizedEmail;
-      if (v.role === "clinic_user") {
+      if (v.role === "clinic_admin") {
         if (v.org_mode === "existing") payload.clinic_id = v.clinic_id;
         else if (v.new_org) {
           payload.new_clinic = {
@@ -233,7 +233,7 @@ export default function UsersPage() {
             ownership_type: sanitizeOptionalText(v.new_org.ownership_type, 80) ?? undefined,
           };
         }
-      } else if (v.role === "hospital_admin" || v.role === "hospital_staff") {
+      } else if (v.role === "hospital_admin") {
         if (v.org_mode === "existing") payload.hospital_id = v.hospital_id;
         else if (v.new_org) {
           payload.new_hospital = {
@@ -248,17 +248,13 @@ export default function UsersPage() {
             departments: (v.new_org.departments ?? []).slice(0, 20).map((d) => sanitizeText(d, 80)),
           };
         }
-        if (v.role === "hospital_staff") {
-          payload.department_id = v.department_id || undefined;
-          payload.staff_id = sanitizeText(v.staff_id || "", 50);
-        }
       }
       const { data, error } = await invokeAdminFunction("admin-create-user", payload);
       if (error) throw error;
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
       toast.success("User created");
       setOpen(false);
-      setForm({ full_name: "", email: "", username: "", phone: "", password: "", role: "clinic_user", status: "active", org_mode: "existing", clinic_id: "", hospital_id: "", department_id: "", staff_id: "", new_org: { name: "", type: "Other", region: "", city: "", address: "", gps_code: "", contact: "", email: "", ownership_type: "Private", departments: [] } });
+      setForm({ full_name: "", email: "", username: "", phone: "", password: "", role: "clinic_admin", status: "active", org_mode: "existing", clinic_id: "", hospital_id: "", department_id: "", staff_id: "", new_org: { name: "", type: "Other", region: "", city: "", address: "", gps_code: "", contact: "", email: "", ownership_type: "Private", departments: [] } });
       load();
     } catch (e) {
       toast.error(await safeFunctionError(e));
@@ -278,7 +274,7 @@ export default function UsersPage() {
       email: u.email ?? "",
       username: u.username ?? "",
       phone: u.phone ?? "",
-      role: u.user_roles[0]?.role ?? "clinic_user",
+      role: u.user_roles[0]?.role ?? "clinic_admin",
       status: (u.status as UserStatus) ?? "active",
       clinic_id: u.clinic_id ?? "",
       hospital_id: u.hospital_id ?? "",
@@ -313,8 +309,8 @@ export default function UsersPage() {
         phone: sanitizeOptionalText(ed.phone || undefined, 40) ?? undefined,
         role: ed.role,
         status: ed.status,
-        clinic_id: ed.role === "clinic_user" ? (ed.clinic_id || null) : null,
-        hospital_id: ed.role === "hospital_admin" || ed.role === "hospital_staff" ? (ed.hospital_id || null) : null,
+        clinic_id: ed.role === "clinic_admin" ? (ed.clinic_id || null) : null,
+        hospital_id: ed.role === "hospital_admin" ? (ed.hospital_id || null) : null,
         email: sanitizeOptionalText(ed.email || undefined, 320)?.toLowerCase(),
       });
       toast.success("User updated");
@@ -387,8 +383,8 @@ export default function UsersPage() {
     }
   };
 
-  const needsOrg = form.role === "clinic_user" || form.role === "hospital_admin" || form.role === "hospital_staff";
-  const orgKind = form.role === "clinic_user" ? "clinic" : "hospital";
+  const needsOrg = form.role === "clinic_admin" || form.role === "hospital_admin";
+  const orgKind = form.role === "clinic_admin" ? "clinic" : "hospital";
 
   return (
     <div className="space-y-5">
@@ -407,7 +403,7 @@ export default function UsersPage() {
             <div className="space-y-4">
               <Section title="Account">
                 <Two><F label="Full name *"><Input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} /></F>
-                <F label={form.role === "hospital_admin" ? "Email *" : "Email (optional)"}><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></F></Two>
+                <F label={form.role === "hospital_admin" || form.role === "clinic_admin" ? "Email *" : "Email (optional)"}><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></F></Two>
                 <Two><F label="Username *"><Input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase() }))} placeholder="lowercase letters, numbers, . _ -" /></F>
                 <F label="Phone"><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></F></Two>
                 <F label="Password * (min 6)">
@@ -452,10 +448,8 @@ export default function UsersPage() {
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="clinic_user">Clinic User</SelectItem>
+                        <SelectItem value="clinic_admin">Clinic Admin</SelectItem>
                         <SelectItem value="hospital_admin">Hospital Admin</SelectItem>
-                        <SelectItem value="hospital_staff">Hospital Staff</SelectItem>
-                        <SelectItem value="admin">Admin (system)</SelectItem>
                       </SelectContent>
                     </Select>
                   </F>
@@ -478,7 +472,7 @@ export default function UsersPage() {
                   <Select
                     value={form.org_mode}
                     onValueChange={(v) => setForm((f) => ({ ...f, org_mode: v as "existing" | "new" }))}
-                    disabled={form.role === "hospital_staff"}
+                    disabled={false}
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent><SelectItem value="existing">Link to existing</SelectItem><SelectItem value="new">Create new</SelectItem></SelectContent>
@@ -501,29 +495,6 @@ export default function UsersPage() {
                         </Select>
                       </F>
 
-                      {form.role === "hospital_staff" && (
-                        <>
-                          <F label="Department *">
-                            <Select
-                              value={form.department_id}
-                              onValueChange={(v) => setForm((f) => ({ ...f, department_id: v }))}
-                              disabled={!form.hospital_id}
-                            >
-                              <SelectTrigger><SelectValue placeholder={form.hospital_id ? "Select…" : "Select a hospital first"} /></SelectTrigger>
-                              <SelectContent>
-                                {departments
-                                  .filter((d) => d.hospital_id === form.hospital_id)
-                                  .map((d) => (
-                                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                          </F>
-                          <F label="Staff ID *">
-                            <Input value={form.staff_id} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))} />
-                          </F>
-                        </>
-                      )}
                     </>
                   ) : (
                     <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
@@ -576,8 +547,8 @@ export default function UsersPage() {
                   !form.full_name ||
                   !form.username ||
                   !form.password ||
-                  (form.role === "hospital_admin" && !form.email.trim()) ||
-                  (form.role === "hospital_staff" && (!form.hospital_id || !form.department_id || !form.staff_id.trim()))
+                  ((form.role === "hospital_admin" || form.role === "clinic_admin") && !form.email.trim()) ||
+                  ((form.role === "hospital_admin") && !form.hospital_id)
                 }
               >
                 {busy ? "Creating…" : "Create user"}
@@ -602,6 +573,8 @@ export default function UsersPage() {
             <SelectItem value="admin">Admin</SelectItem>
             <SelectItem value="hospital_admin">Hospital Admin</SelectItem>
             <SelectItem value="hospital_staff">Hospital Staff</SelectItem>
+            <SelectItem value="clinic_admin">Clinic Admin</SelectItem>
+            <SelectItem value="clinic_staff">Clinic Staff</SelectItem>
             <SelectItem value="clinic_user">Clinic User</SelectItem>
           </SelectContent>
         </Select>
@@ -687,13 +660,11 @@ export default function UsersPage() {
             <F label="Phone"><Input value={edit.phone} onChange={(e) => setEdit((x) => ({ ...x, phone: e.target.value }))} /></F>
             <Two>
               <F label="Role">
-                <Select value={edit.role} onValueChange={(v) => setEdit((x) => ({ ...x, role: v, clinic_id: v === "clinic_user" ? x.clinic_id : "", hospital_id: v === "hospital_admin" || v === "hospital_staff" ? x.hospital_id : "" }))}>
+                <Select value={edit.role} onValueChange={(v) => setEdit((x) => ({ ...x, role: v, clinic_id: v === "clinic_user" || v === "clinic_admin" || v === "clinic_staff" ? x.clinic_id : "", hospital_id: v === "hospital_admin" || v === "hospital_staff" ? x.hospital_id : "" }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="clinic_admin">Clinic Admin</SelectItem>
                     <SelectItem value="hospital_admin">Hospital Admin</SelectItem>
-                    <SelectItem value="hospital_staff">Hospital Staff</SelectItem>
-                    <SelectItem value="clinic_user">Clinic User</SelectItem>
                   </SelectContent>
                 </Select>
               </F>
@@ -709,7 +680,7 @@ export default function UsersPage() {
                 </Select>
               </F>
             </Two>
-            {edit.role === "clinic_user" && (
+            {edit.role === "clinic_admin" && (
               <F label="Clinic">
                 <Select value={edit.clinic_id} onValueChange={(v) => setEdit((x) => ({ ...x, clinic_id: v }))}>
                   <SelectTrigger><SelectValue placeholder="Select clinic" /></SelectTrigger>
@@ -725,7 +696,7 @@ export default function UsersPage() {
                 </Select>
               </F>
             )}
-            {(edit.role === "hospital_admin" || edit.role === "hospital_staff") && (
+            {edit.role === "hospital_admin" && (
               <F label="Hospital">
                 <Select value={edit.hospital_id} onValueChange={(v) => setEdit((x) => ({ ...x, hospital_id: v }))}>
                   <SelectTrigger><SelectValue placeholder="Select hospital" /></SelectTrigger>
@@ -748,8 +719,8 @@ export default function UsersPage() {
                 busy ||
                 !edit.full_name ||
                 !edit.username ||
-                (edit.role === "clinic_user" && !edit.clinic_id) ||
-                ((edit.role === "hospital_admin" || edit.role === "hospital_staff") && !edit.hospital_id)
+                (edit.role === "clinic_admin" && !edit.clinic_id) ||
+                (edit.role === "hospital_admin" && !edit.hospital_id)
               }
               onClick={saveEdit}
             >

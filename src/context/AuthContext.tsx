@@ -2,13 +2,14 @@ import { createContext, useContext, useCallback, useEffect, useRef, useState, Re
 import { supabase } from "@/integrations/supabase/client";
 import type { Session, User } from "@supabase/supabase-js";
 import { toast } from "sonner";
+import type { AppRole } from "@/context/authRoles";
 
 /** Auto sign-out after this many milliseconds without user activity */
 const INACTIVITY_SIGN_OUT_MS = 5 * 60 * 1000;
 /** Max how often we reset the idle timer (keeps mousemove / scroll from resetting hundreds of timers per second) */
 const IDLE_ARM_THROTTLE_MS = 750;
-
-type AppRole = "admin" | "hospital_admin" | "hospital_staff" | "clinic_user" | "doctor";
+/** Prevent indefinite loading spinners when auth/profile requests stall. */
+const AUTH_INIT_TIMEOUT_MS = 12_000;
 
 interface Profile {
   id: string;
@@ -99,7 +100,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let alive = true;
+    const initTimeout = window.setTimeout(() => {
+      if (alive) setLoading(false);
+    }, AUTH_INIT_TIMEOUT_MS);
+
     const { data: sub } = supabase.auth.onAuthStateChange((_e, sess) => {
+      if (!alive) return;
       setSession(sess);
       setUser(sess?.user ?? null);
       if (sess?.user) {
@@ -118,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     supabase.auth.getSession().then(({ data: { session: sess } }) => {
+      if (!alive) return;
       setSession(sess);
       setUser(sess?.user ?? null);
       if (sess?.user) {
@@ -130,9 +138,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .finally(() => setLoading(false));
       }
       else setLoading(false);
+    }).catch(() => {
+      if (!alive) return;
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setRoles([]);
+      setLoading(false);
     });
 
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      alive = false;
+      window.clearTimeout(initTimeout);
+      sub.subscription.unsubscribe();
+    };
   }, [loadProfile]);
 
   const signOut = useCallback(async () => {
@@ -205,8 +224,4 @@ export function useAuth() {
   return c;
 }
 
-export function hasRole(roles: AppRole[], ...wanted: AppRole[]) {
-  return roles.some((r) => wanted.includes(r));
-}
-
-export type { AppRole, Profile };
+export type { Profile };
