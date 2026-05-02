@@ -548,7 +548,12 @@ export default function UsersPage() {
                   !form.username ||
                   !form.password ||
                   ((form.role === "hospital_admin" || form.role === "clinic_admin") && !form.email.trim()) ||
-                  ((form.role === "hospital_admin") && !form.hospital_id)
+                  (form.role === "hospital_admin" &&
+                    form.org_mode === "existing" &&
+                    !form.hospital_id) ||
+                  (form.role === "clinic_admin" &&
+                    form.org_mode === "existing" &&
+                    !form.clinic_id)
                 }
               >
                 {busy ? "Creating…" : "Create user"}

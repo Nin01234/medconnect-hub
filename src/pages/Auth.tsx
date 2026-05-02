@@ -40,11 +40,12 @@ export default function Auth() {
       }
       let emailForLogin = parsed.data.identifier;
       if (!emailForLogin.includes("@")) {
-        const { data, error } = await supabase.rpc("resolve_login_identifier", {
-          p_identifier: emailForLogin,
+        const { data, error } = await supabase.functions.invoke("resolve-login-identifier", {
+          body: { identifier: emailForLogin },
         });
-        if (error || !data) throw new Error("Invalid login credentials");
-        emailForLogin = data;
+        const resolved = (data as { email?: string | null } | null)?.email ?? null;
+        if (error || !resolved) throw new Error("Invalid login credentials");
+        emailForLogin = resolved;
       }
       const { error } = await supabase.auth.signInWithPassword({
         email: emailForLogin,

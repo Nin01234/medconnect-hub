@@ -9,6 +9,7 @@ export const LIMITS = {
   longText: 12000,
   message: 8000,
   passwordMax: 128,
+  passwordMin: 6,
   departments: 20,
   username: 30,
 } as const;
@@ -26,7 +27,7 @@ const usernameSchema = z
 
 export const authSignInSchema = z.object({
   identifier: z.string().trim().toLowerCase().min(3).max(LIMITS.email),
-  password: z.string().min(6).max(LIMITS.passwordMax),
+  password: z.string().min(LIMITS.passwordMin).max(LIMITS.passwordMax),
 }).superRefine((data, ctx) => {
   const isEmail = data.identifier.includes("@");
   if (isEmail) {
@@ -45,7 +46,7 @@ export const authSignInSchema = z.object({
 export const authSignUpSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(LIMITS.email),
   username: usernameSchema,
-  password: z.string().min(6).max(LIMITS.passwordMax),
+  password: z.string().min(LIMITS.passwordMin).max(LIMITS.passwordMax),
   fullName: z.string().trim().min(1).max(LIMITS.name),
   phone: z.string().trim().max(LIMITS.phone).optional().or(z.literal("")),
   orgName: z.string().trim().min(1).max(LIMITS.name),
@@ -114,7 +115,7 @@ export const adminCreateUserSchema = z
     email: z.union([z.literal(""), z.string().trim().toLowerCase().email().max(LIMITS.email)]),
     username: usernameSchema,
     phone: z.string().trim().max(LIMITS.phone).optional().or(z.literal("")),
-    password: z.string().min(6).max(LIMITS.passwordMax),
+    password: z.string().min(LIMITS.passwordMin).max(LIMITS.passwordMax),
     role: z.enum(["clinic_user", "clinic_admin", "clinic_staff", "hospital_admin", "hospital_staff", "admin"]),
     status: z.enum(["pending_approval", "active", "rejected", "suspended"]),
     org_mode: z.enum(["existing", "new"]),
@@ -187,5 +188,5 @@ export const adminEditUserSchema = z
   });
 
 export const resetPasswordSchema = z.object({
-  new_password: z.string().min(6).max(LIMITS.passwordMax),
+  new_password: z.string().min(LIMITS.passwordMin).max(LIMITS.passwordMax),
 });

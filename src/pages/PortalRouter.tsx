@@ -11,6 +11,11 @@ import { supabase } from "@/integrations/supabase/client";
 export default function PortalRouter() {
   const { user, roles, loading, profile } = useAuth();
   const isHospitalStaff = hasRole(roles, "hospital_staff");
+  const normalizedStatus = (profile?.status ?? "active").toLowerCase().trim();
+  const isBlockedStatus =
+    normalizedStatus === "pending_approval" ||
+    normalizedStatus === "suspended" ||
+    normalizedStatus === "rejected";
   const { data: departmentStatus = "active", isLoading: departmentLoading } = useQuery({
     queryKey: profile?.department_id ? ["auth", "department-status", profile.department_id] : ["auth", "department-status", "none"],
     enabled: !!user && isHospitalStaff && !!profile?.department_id,
@@ -28,7 +33,7 @@ export default function PortalRouter() {
   if (loading) return <FullPageLoader />;
   if (departmentLoading) return <FullPageLoader />;
   if (!user) return <Navigate to="/auth" replace />;
-  if (!hasRole(roles, "admin") && profile?.status !== "active") return <AccountStatus status={profile?.status} />;
+  if (!hasRole(roles, "admin") && isBlockedStatus) return <AccountStatus status={normalizedStatus} />;
   if (isHospitalStaff && profile?.department_id && departmentStatus !== "active") {
     return <AccountStatus status="department_inactive" />;
   }

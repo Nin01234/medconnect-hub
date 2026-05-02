@@ -28,6 +28,20 @@ interface Profile {
   user_roles?: { role: AppRole }[];
 }
 
+const APP_ROLES: AppRole[] = [
+  "admin",
+  "hospital_admin",
+  "hospital_staff",
+  "clinic_admin",
+  "clinic_staff",
+  "clinic_user",
+  "doctor",
+];
+
+function isAppRole(value: unknown): value is AppRole {
+  return typeof value === "string" && APP_ROLES.includes(value as AppRole);
+}
+
 interface AuthCtx {
   user: User | null;
   session: Session | null;
@@ -50,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const profileInflight = useRef<Promise<void> | null>(null);
   const profileInflightUid = useRef<string | null>(null);
 
-  const loadProfile = useCallback(async (uid: string) => {
+  const loadProfile = useCallback(async (uid: string, authUser?: User | null) => {
     if (profileInflightUid.current === uid && profileInflight.current) {
       await profileInflight.current;
       return;
@@ -65,21 +79,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle(),
         supabase.from("user_roles").select("role").eq("user_id", uid),
       ]);
-      const rolesList = (r ?? []).map((x) => x.role as AppRole);
+      const dbRoles = (r ?? [])
+        .map((x) => x.role)
+        .filter(isAppRole);
+      const profileRole = isAppRole((p as { role?: unknown } | null)?.role)
+        ? ((p as { role: AppRole }).role)
+        : null;
+      const metadataRole = isAppRole(authUser?.app_metadata?.role) ? authUser.app_metadata.role : null;
+      const fallbackRoles = [profileRole, metadataRole].filter(isAppRole);
+      const rolesList = dbRoles.length > 0 ? dbRoles : fallbackRoles;
       if (!p) {
         setProfile(null);
         setRoles(rolesList);
         return;
       }
-      const userRoles = (r ?? []).map((x) => ({ role: x.role as AppRole }));
+      const primaryRole = rolesList[0] ?? profileRole ?? metadataRole ?? null;
+      const userRoles = rolesList.map((role) => ({ role }));
       setProfile({
         id: p.id,
         unique_id: p.unique_id,
         full_name: p.full_name,
         email: p.email,
         phone: p.phone,
-        role: rolesList[0] ?? null,
-        status: p.status,
+        role: primaryRole,
+        status: p.status ?? "active",
         staff_id: (p as { staff_id?: string | null }).staff_id ?? null,
         department_id: (p as { department_id?: string | null }).department_id ?? null,
         clinic_id: p.clinic_id,
@@ -111,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(sess?.user ?? null);
       if (sess?.user) {
         setLoading(true);
-        void loadProfile(sess.user.id)
+        void loadProfile(sess.user.id, sess.user)
           .catch(() => {
             setProfile(null);
             setRoles([]);
@@ -130,7 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(sess?.user ?? null);
       if (sess?.user) {
         setLoading(true);
-        loadProfile(sess.user.id)
+        loadProfile(sess.user.id, sess.user)
           .catch(() => {
             setProfile(null);
             setRoles([]);
@@ -212,7 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, signOut]);
 
   const refresh = useCallback(async () => {
-    if (user) await loadProfile(user.id);
+    if (user) await loadProfile(user.id, user);
   }, [user, loadProfile]);
 
   return <Ctx.Provider value={{ user, session, profile, roles, loading, signOut, refresh }}>{children}</Ctx.Provider>;
