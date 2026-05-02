@@ -1,0 +1,3 @@
+-- Placeholder: version exists on remote (applied ~2026-04-27 17:07 UTC) without a committed file.
+-- Keeps `supabase migration list` in sync. No-op for databases that already applied this version.
+-- To recover original SQL: Supabase Dashboard → Database → Migrations (or SQL editor history).
