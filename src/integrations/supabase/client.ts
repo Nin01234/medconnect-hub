@@ -49,7 +49,9 @@ const buildClient = () =>
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+    /** Reduce noisy lock-recovery warnings when DevTools/extensions contend with Web Locks (default 5000ms). */
+    lockAcquireTimeout: 15_000,
+  },
 });
 
 type MutableSupabaseClient = SupabaseClient<Database> & {

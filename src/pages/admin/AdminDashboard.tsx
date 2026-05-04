@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { hasRole } from "@/context/authRoles";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Users, Building2, Hospital, FileText, UserCheck, Activity, ArrowRight, ShieldCheck } from "lucide-react";
@@ -14,11 +15,15 @@ interface RecentAudit {
 }
 
 export default function AdminDashboard() {
-  const { profile } = useAuth();
+  const { profile, user, loading, roles } = useAuth();
   const [c, setC] = useState({ users: 0, clinics: 0, hospitals: 0, referrals: 0, pendingApprovals: 0 });
   const [recentAudits, setRecentAudits] = useState<RecentAudit[]>([]);
   useEffect(() => {
+    if (loading || !user || !hasRole(roles, "admin")) return;
+    let cancelled = false;
     (async () => {
+      const { data: ses } = await supabase.auth.getSession();
+      if (cancelled || !ses.session?.access_token) return;
       const [u, cl, h, r, pending, audits] = await Promise.all([
         supabase.from("profiles").select("id", { count: "exact", head: true }),
         supabase.from("clinics").select("id", { count: "exact", head: true }),
@@ -27,6 +32,11 @@ export default function AdminDashboard() {
         supabase.from("profiles").select("id", { count: "exact", head: true }).eq("status", "pending_approval"),
         supabase.from("audit_logs").select("id, action, created_at").order("created_at", { ascending: false }).limit(5),
       ]);
+      if (cancelled) return;
+      const errors = [u.error, cl.error, h.error, r.error, pending.error, audits.error].filter(Boolean);
+      if (errors.length > 0) {
+        console.error("Admin dashboard stats:", errors);
+      }
       setC({
         users: u.count ?? 0,
         clinics: cl.count ?? 0,
@@ -36,7 +46,10 @@ export default function AdminDashboard() {
       });
       setRecentAudits((audits.data ?? []) as RecentAudit[]);
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, user, roles]);
   return (
     <div className="space-y-6">
       <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-r from-primary/10 via-accent/10 to-background p-6 shadow-card">

@@ -5,7 +5,7 @@
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors https://vercel.com https://*.vercel.com https://vercel.live; object-src 'none'; img-src 'self' data: blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io https://*.ingest.de.sentry.io https://*.sentry.io; media-src 'self' blob:; worker-src 'self' blob:;" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors https://vercel.com https://*.vercel.com https://vercel.live; object-src 'none'; img-src 'self' data: blob: https:; script-src 'self' https://vercel.live https://*.vercel.live 'sha256-tk3sakn64f3TqBj3T6H/LAH3++9cUrfZkZJc1+nZIco='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vercel.live https://*.vercel.live wss://*.vercel.live https://*.ingest.sentry.io https://*.ingest.de.sentry.io https://*.sentry.io; media-src 'self' blob:; worker-src 'self' blob:;" },
         { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }

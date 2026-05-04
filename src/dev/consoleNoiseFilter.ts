@@ -1,8 +1,11 @@
 const NOISY_PATTERNS: RegExp[] = [
   /Download the React DevTools for a better development experience/i,
   /\[TermOver AI\]/i,
+  /\[TR:db\]/i,
   /ga4-measurement loaded/i,
   /^CANDIDATES:\s/i,
+  /@supabase\/gotrue-js: Lock .+ was not released within/i,
+  /chrome-extension:\/\/invalid\//i,
 ];
 
 const shouldSuppress = (args: unknown[]) => {
