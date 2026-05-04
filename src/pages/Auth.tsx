@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
@@ -16,6 +17,7 @@ export default function Auth() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const runGuarded = useSubmitGuard();
   const [showPassword, setShowPassword] = useState(false);
   const { user } = useAuth();
   const nav = useNavigate();
@@ -30,35 +32,37 @@ export default function Auth() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
-    try {
-      const normalizedIdentifier = sanitizeLoginIdentifier(identifier, LIMITS.email);
-      const parsed = authSignInSchema.safeParse({ identifier: normalizedIdentifier, password });
-      if (!parsed.success) {
-        toast.error(parsed.error.issues[0]?.message ?? "Check your input.");
-        return;
-      }
-      let emailForLogin = parsed.data.identifier;
-      if (!emailForLogin.includes("@")) {
-        const { data, error } = await supabase.functions.invoke("resolve-login-identifier", {
-          body: { identifier: emailForLogin },
+    await runGuarded(async () => {
+      setBusy(true);
+      try {
+        const normalizedIdentifier = sanitizeLoginIdentifier(identifier, LIMITS.email);
+        const parsed = authSignInSchema.safeParse({ identifier: normalizedIdentifier, password });
+        if (!parsed.success) {
+          toast.error(parsed.error.issues[0]?.message ?? "Check your input.");
+          return;
+        }
+        let emailForLogin = parsed.data.identifier;
+        if (!emailForLogin.includes("@")) {
+          const { data, error } = await supabase.functions.invoke("resolve-login-identifier", {
+            body: { identifier: emailForLogin },
+          });
+          const resolved = (data as { email?: string | null } | null)?.email ?? null;
+          if (error || !resolved) throw new Error("Invalid login credentials");
+          emailForLogin = resolved;
+        }
+        const { error } = await supabase.auth.signInWithPassword({
+          email: emailForLogin,
+          password: parsed.data.password,
         });
-        const resolved = (data as { email?: string | null } | null)?.email ?? null;
-        if (error || !resolved) throw new Error("Invalid login credentials");
-        emailForLogin = resolved;
+        if (error) throw new Error("Invalid login credentials");
+        toast.success("Welcome back");
+        nav("/portal", { replace: true });
+      } catch (err) {
+        toast.error(safeClientError(err));
+      } finally {
+        setBusy(false);
       }
-      const { error } = await supabase.auth.signInWithPassword({
-        email: emailForLogin,
-        password: parsed.data.password,
-      });
-      if (error) throw new Error("Invalid login credentials");
-      toast.success("Welcome back");
-      nav("/portal", { replace: true });
-    } catch (err) {
-      toast.error(safeClientError(err));
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   return (

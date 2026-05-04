@@ -2,10 +2,20 @@ import { createRoot } from "react-dom/client";
 import * as Sentry from "@sentry/react";
 import App from "./App.tsx";
 import "@fontsource-variable/plus-jakarta-sans";
-import "@fontsource/fraunces/500.css";
-import "@fontsource/fraunces/600.css";
-import "@fontsource/fraunces/700.css";
 import "./index.css";
+
+// Display headings use Fraunces; load after first paint so JS/CSS parse stays fast.
+const loadDisplayFonts = () =>
+  Promise.all([
+    import("@fontsource/fraunces/500.css"),
+    import("@fontsource/fraunces/600.css"),
+    import("@fontsource/fraunces/700.css"),
+  ]).then(() => undefined);
+if (typeof requestIdleCallback === "function") {
+  requestIdleCallback(() => void loadDisplayFonts(), { timeout: 2500 });
+} else {
+  window.setTimeout(() => void loadDisplayFonts(), 0);
+}
 import { installDevConsoleNoiseFilter } from "./dev/consoleNoiseFilter";
 
 installDevConsoleNoiseFilter();

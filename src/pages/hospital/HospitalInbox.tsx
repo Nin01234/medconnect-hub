@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
+import { sanitizeText } from "@/lib/sanitize";
 
 interface Row {
   id: string;
@@ -65,7 +66,7 @@ export default function HospitalInbox() {
     };
   }, [hospitalId, debouncedRealtime, cancelDebouncedRealtime]);
 
-  const normalizedQuery = q.trim().toLowerCase();
+  const normalizedQuery = sanitizeText(q, 200).toLowerCase();
   const filtered = rows.filter(
     (r) =>
       (status === "all" || r.status === status) &&

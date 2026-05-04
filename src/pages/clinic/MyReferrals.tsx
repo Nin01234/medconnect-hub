@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
+import { sanitizeText } from "@/lib/sanitize";
 
 interface Row {
   id: string;
@@ -35,7 +36,7 @@ export default function MyReferrals() {
       .then(({ data }) => setRows((data ?? []) as unknown as Row[]));
   }, [profile?.clinic_id]);
 
-  const normalizedQuery = q.trim().toLowerCase();
+  const normalizedQuery = sanitizeText(q, 200).toLowerCase();
   const filtered = rows.filter(r =>
     (status === "all" || r.status === status) &&
     (

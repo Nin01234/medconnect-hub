@@ -50,7 +50,13 @@ export default function Landing() {
             <span className="text-[11px] sm:text-xs text-muted-foreground leading-tight block truncate">{BRAND.institution}</span>
           </div>
         </div>
-        <Link to="/auth" className="shrink-0">
+        <Link
+          to="/auth"
+          className="shrink-0"
+          onMouseEnter={warmAuthAndPortalBundles}
+          onFocus={warmAuthAndPortalBundles}
+          onTouchStart={warmAuthAndPortalBundles}
+        >
           <Button variant="outlineBrand" size="sm">
             Sign in
           </Button>

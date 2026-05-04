@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ export function MessagePanel({ referralId, readOnly = false }: { referralId: str
   const { user } = useAuth();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
+  const runGuarded = useSubmitGuard();
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("referral_messages").select("*").eq("referral_id", referralId).order("created_at");
@@ -48,12 +50,14 @@ export function MessagePanel({ referralId, readOnly = false }: { referralId: str
     }
     const t = sanitizeText(parsed.data.message, 8000);
     setText("");
-    try {
-      const { error } = await supabase.from("referral_messages").insert({ referral_id: referralId, sender_id: user.id, message: t });
-      if (error) throw error;
-    } catch (e) {
-      toast.error(safeClientError(e));
-    }
+    await runGuarded(async () => {
+      try {
+        const { error } = await supabase.from("referral_messages").insert({ referral_id: referralId, sender_id: user.id, message: t });
+        if (error) throw error;
+      } catch (e) {
+        toast.error(safeClientError(e));
+      }
+    });
   };
 
   return (

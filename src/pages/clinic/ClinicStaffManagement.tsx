@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { hasRole } from "@/context/authRoles";
@@ -31,6 +32,7 @@ export default function ClinicStaffManagement() {
   const canManage = hasRole(roles, "clinic_admin", "admin");
   const [rows, setRows] = useState<StaffRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const runGuarded = useSubmitGuard();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [resetOpen, setResetOpen] = useState(false);
@@ -111,7 +113,7 @@ export default function ClinicStaffManagement() {
   }, [form.password]);
 
   const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
+    const term = sanitizeText(q, 200).toLowerCase();
     if (!term) return rows;
     return rows.filter((u) => [u.full_name ?? "", u.email ?? "", u.username ?? "", u.phone ?? "", u.staff_id ?? ""].some((v) => v.toLowerCase().includes(term)));
   }, [rows, q]);
@@ -138,6 +140,7 @@ export default function ClinicStaffManagement() {
       return;
     }
 
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const v = validated.data;
@@ -166,9 +169,11 @@ export default function ClinicStaffManagement() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const setStatus = async (user: StaffRow, status: StaffStatus) => {
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const { data, error } = await invokeFn("admin-manage-user", {
@@ -186,6 +191,7 @@ export default function ClinicStaffManagement() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const resetPassword = async () => {
@@ -195,6 +201,7 @@ export default function ClinicStaffManagement() {
       toast.error(parsed.error.issues[0]?.message ?? "Password must be at least 6 characters.");
       return;
     }
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const { data, error } = await invokeFn("admin-manage-user", {
@@ -213,10 +220,12 @@ export default function ClinicStaffManagement() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const removeUser = async (u: StaffRow) => {
     if (!window.confirm(`Delete ${u.full_name ?? u.email ?? "this staff account"}? This cannot be undone.`)) return;
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const { data, error } = await invokeFn("admin-manage-user", { action: "delete_user", user_id: u.id });
@@ -229,6 +238,7 @@ export default function ClinicStaffManagement() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const openEdit = (u: StaffRow) => {
@@ -262,6 +272,7 @@ export default function ClinicStaffManagement() {
       toast.error(parsed.error.issues[0]?.message ?? "Check your input.");
       return;
     }
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const ed = parsed.data;
@@ -287,6 +298,7 @@ export default function ClinicStaffManagement() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   if (!canManage) {

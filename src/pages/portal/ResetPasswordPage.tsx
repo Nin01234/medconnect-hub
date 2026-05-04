@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { safeClientError } from "@/lib/safeError";
 
 export default function ResetPasswordPage() {
   const [busy, setBusy] = useState(false);
+  const runGuarded = useSubmitGuard();
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
 
@@ -31,18 +33,20 @@ export default function ResetPasswordPage() {
       toast.error("Passwords do not match.");
       return;
     }
-    setBusy(true);
-    try {
-      const { error } = await supabase.auth.updateUser({ password: parsed.data.new_password });
-      if (error) throw error;
-      toast.success("Password updated.");
-      setPw("");
-      setPw2("");
-    } catch (err) {
-      toast.error(safeClientError(err));
-    } finally {
-      setBusy(false);
-    }
+    await runGuarded(async () => {
+      setBusy(true);
+      try {
+        const { error } = await supabase.auth.updateUser({ password: parsed.data.new_password });
+        if (error) throw error;
+        toast.success("Password updated.");
+        setPw("");
+        setPw2("");
+      } catch (err) {
+        toast.error(safeClientError(err));
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   return (

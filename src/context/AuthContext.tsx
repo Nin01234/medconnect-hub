@@ -74,7 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const [{ data: p }, { data: r }] = await Promise.all([
         supabase
           .from("profiles")
-          .select("*, clinics(name,region,city), hospitals(name,region,city)")
+          .select(
+            "id, unique_id, full_name, email, phone, status, role, staff_id, department_id, clinic_id, hospital_id, clinics(name,region,city), hospitals(name,region,city)",
+          )
           .eq("id", uid)
           .maybeSingle(),
         supabase.from("user_roles").select("role").eq("user_id", uid),
@@ -128,10 +130,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (alive) setLoading(false);
     }, AUTH_INIT_TIMEOUT_MS);
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, sess) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
       if (!alive) return;
       setSession(sess);
       setUser(sess?.user ?? null);
+      // INITIAL_SESSION is handled together with getSession() to avoid a duplicate profile round-trip.
+      if (event === "INITIAL_SESSION") {
+        return;
+      }
       if (sess?.user) {
         setLoading(true);
         void loadProfile(sess.user.id, sess.user)

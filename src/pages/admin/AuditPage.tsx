@@ -7,6 +7,7 @@ import { RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { auditActionDetail, auditActionTitle } from "@/lib/auditLogLabels";
+import { sanitizeText } from "@/lib/sanitize";
 
 interface AuditRow {
   id: string;
@@ -111,12 +112,12 @@ export default function AuditPage() {
     void load();
   }, [load]);
 
-  const normalizedQuery = q.trim().toLowerCase();
   const filtered = useMemo(() => {
+    const queryTerm = sanitizeText(q, 500).toLowerCase();
     return rows.filter((r) => {
       if (action !== "all" && r.action !== action) return false;
       if (entity !== "all" && (r.entity_type ?? "unknown") !== entity) return false;
-      if (!normalizedQuery) return true;
+      if (!queryTerm) return true;
 
       const actorP = r.actor_id ? profileById[r.actor_id] : undefined;
       const targetP = r.entity_type === "user" && r.entity_id ? profileById[r.entity_id] : undefined;
@@ -135,9 +136,9 @@ export default function AuditPage() {
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
-      return hay.includes(normalizedQuery);
+      return hay.includes(queryTerm);
     });
-  }, [rows, action, entity, normalizedQuery, profileById]);
+  }, [rows, action, entity, q, profileById]);
 
   const actions = Array.from(new Set(rows.map((r) => r.action).filter(Boolean))).sort();
   const entities = Array.from(new Set(rows.map((r) => r.entity_type ?? "unknown"))).sort();

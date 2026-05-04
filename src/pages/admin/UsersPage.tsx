@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ export default function UsersPage() {
   const [filterRole, setFilterRole] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [busy, setBusy] = useState(false);
+  const runGuarded = useSubmitGuard();
   const [editOpen, setEditOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [selected, setSelected] = useState<UserRow | null>(null);
@@ -136,9 +138,10 @@ export default function UsersPage() {
   const pendingCount = useMemo(() => users.filter((u) => u.status === "pending_approval").length, [users]);
   const activeCount = useMemo(() => users.filter((u) => u.status === "active").length, [users]);
 
-  const filtered = useMemo(() => users
+  const filtered = useMemo(() => {
+    const term = sanitizeText(q, 200).toLowerCase();
+    return users
     .filter(u => {
-      const term = q.trim().toLowerCase();
       return (
         (filterRole === "all" || u.user_roles.some(r => r.role === filterRole)) &&
         (filterStatus === "all" || u.status === filterStatus) &&
@@ -156,7 +159,8 @@ export default function UsersPage() {
       if (a.status === "pending_approval" && b.status !== "pending_approval") return -1;
       if (a.status !== "pending_approval" && b.status === "pending_approval") return 1;
       return 0;
-    }), [users, filterRole, filterStatus, q]);
+    });
+  }, [users, filterRole, filterStatus, q]);
 
   // Form state
   const [form, setForm] = useState({
@@ -205,6 +209,7 @@ export default function UsersPage() {
       toast.error(validated.error.issues[0]?.message ?? "Check your input.");
       return;
     }
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const v = validated.data;
@@ -259,6 +264,7 @@ export default function UsersPage() {
     } catch (e) {
       toast.error(await safeFunctionError(e));
     } finally { setBusy(false); }
+    });
   };
 
   const runAdminAction = async (body: Record<string, unknown>) => {
@@ -299,6 +305,7 @@ export default function UsersPage() {
       return;
     }
     const ed = parsed.data;
+    await runGuarded(async () => {
     setBusy(true);
     try {
       await runAdminAction({
@@ -321,9 +328,11 @@ export default function UsersPage() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const approve = async (u: UserRow) => {
+    await runGuarded(async () => {
     setBusy(true);
     try {
       await runAdminAction({ action: "approve_user", user_id: u.id });
@@ -334,9 +343,11 @@ export default function UsersPage() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const setStatus = async (u: UserRow, status: UserStatus) => {
+    await runGuarded(async () => {
     setBusy(true);
     try {
       await runAdminAction({ action: "update_user", user_id: u.id, status });
@@ -347,6 +358,7 @@ export default function UsersPage() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const resetPassword = async () => {
@@ -356,6 +368,7 @@ export default function UsersPage() {
       toast.error(parsed.error.issues[0]?.message ?? "Password must be at least 6 characters.");
       return;
     }
+    await runGuarded(async () => {
     setBusy(true);
     try {
       await runAdminAction({ action: "reset_password", user_id: selected.id, new_password: parsed.data.new_password });
@@ -367,10 +380,12 @@ export default function UsersPage() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const removeUser = async (u: UserRow) => {
     if (!window.confirm(`Delete ${u.full_name ?? u.email ?? "this user"}? This cannot be undone.`)) return;
+    await runGuarded(async () => {
     setBusy(true);
     try {
       await runAdminAction({ action: "delete_user", user_id: u.id });
@@ -381,6 +396,7 @@ export default function UsersPage() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const needsOrg = form.role === "clinic_admin" || form.role === "hospital_admin";

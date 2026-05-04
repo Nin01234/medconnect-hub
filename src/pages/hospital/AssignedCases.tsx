@@ -12,6 +12,7 @@ import { referralKeys } from "@/lib/referralQueryKeys";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { toast } from "sonner";
 import { safeClientError } from "@/lib/safeError";
+import { sanitizeText } from "@/lib/sanitize";
 
 interface Row {
   id: string;
@@ -172,7 +173,7 @@ export default function AssignedCases() {
   }, [rows]);
 
   const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
+    const term = sanitizeText(q, 200).toLowerCase();
     return rows.filter((r) => {
       const departmentName = r.departments?.name ?? r.assigned_department ?? "";
       const departmentOk = department === "all" || departmentName === department;

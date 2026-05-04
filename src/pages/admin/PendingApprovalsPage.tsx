@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -6,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { sanitizeText } from "@/lib/sanitize";
 
 interface PendingUser {
   id: string;
@@ -24,6 +26,7 @@ export default function PendingApprovalsPage() {
   const [rows, setRows] = useState<PendingUser[]>([]);
   const [q, setQ] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const runGuarded = useSubmitGuard();
   const [loading, setLoading] = useState(false);
 
   const isUnauthorizedError = (error: unknown) => {
@@ -107,7 +110,7 @@ export default function PendingApprovalsPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
+    const term = sanitizeText(q, 200).toLowerCase();
     if (!term) return rows;
     return rows.filter((r) =>
       (r.full_name ?? "").toLowerCase().includes(term) ||
@@ -123,30 +126,34 @@ export default function PendingApprovalsPage() {
   };
 
   const approve = async (userId: string) => {
-    setBusyId(userId);
-    try {
-      await runAction({ action: "approve_user", user_id: userId });
-      toast.success("User approved");
-      await load();
-    } catch (e) {
-      toast.error(await getActionErrorMessage(e));
-    } finally {
-      setBusyId(null);
-    }
+    await runGuarded(async () => {
+      setBusyId(userId);
+      try {
+        await runAction({ action: "approve_user", user_id: userId });
+        toast.success("User approved");
+        await load();
+      } catch (e) {
+        toast.error(await getActionErrorMessage(e));
+      } finally {
+        setBusyId(null);
+      }
+    });
   };
 
   const reject = async (userId: string, name: string) => {
     if (!window.confirm(`Reject ${name}?`)) return;
-    setBusyId(userId);
-    try {
-      await runAction({ action: "update_user", user_id: userId, status: "rejected" });
-      toast.success("User rejected");
-      await load();
-    } catch (e) {
-      toast.error(await getActionErrorMessage(e));
-    } finally {
-      setBusyId(null);
-    }
+    await runGuarded(async () => {
+      setBusyId(userId);
+      try {
+        await runAction({ action: "update_user", user_id: userId, status: "rejected" });
+        toast.success("User rejected");
+        await load();
+      } catch (e) {
+        toast.error(await getActionErrorMessage(e));
+      } finally {
+        setBusyId(null);
+      }
+    });
   };
 
   return (

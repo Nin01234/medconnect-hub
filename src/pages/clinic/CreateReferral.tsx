@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
@@ -32,6 +33,7 @@ export default function CreateReferral() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const runGuarded = useSubmitGuard();
   const [form, setForm] = useState({
     patient_name: "", patient_age: "", patient_gender: "" as "" | "male" | "female" | "other", patient_phone: "",
     diagnosis: "", symptoms: "", urgency_level: "medium" as "low" | "medium" | "high" | "critical",
@@ -69,6 +71,7 @@ export default function CreateReferral() {
         return;
       }
     }
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const patientName = sanitizeText(v.patient_name, 200);
@@ -164,6 +167,7 @@ export default function CreateReferral() {
     } catch (err) {
       toast.error(safeClientError(err));
     } finally { setBusy(false); }
+    });
   };
 
   return (

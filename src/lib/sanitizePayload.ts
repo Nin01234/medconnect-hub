@@ -1,6 +1,7 @@
 import { sanitizeText } from "@/lib/sanitize";
 
-const PASSWORD_KEYS = new Set(["password", "new_password"]);
+/** Keys whose string values must not be altered (strip rules could change valid secrets). */
+const PASSWORD_KEYS = new Set(["password", "new_password", "current_password", "old_password"]);
 
 type Jsonish = Record<string, unknown> | unknown[] | string | number | boolean | null | undefined;
 

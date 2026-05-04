@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { hasRole } from "@/context/authRoles";
@@ -29,6 +30,7 @@ export default function Departments() {
   const [editingDepartmentId, setEditingDepartmentId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [busy, setBusy] = useState(false);
+  const runGuarded = useSubmitGuard();
 
   const load = useCallback(async () => {
     if (!profile?.hospital_id) return;
@@ -72,6 +74,7 @@ export default function Departments() {
       return;
     }
 
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const { error } = await supabase.from("departments").insert({
@@ -88,6 +91,7 @@ export default function Departments() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const openEdit = (row: DepartmentRow) => {
@@ -112,6 +116,7 @@ export default function Departments() {
       return;
     }
 
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const { error } = await supabase.from("departments").update({ name: cleaned }).eq("id", id);
@@ -124,6 +129,7 @@ export default function Departments() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const toggleStatus = async (row: DepartmentRow) => {
@@ -136,6 +142,7 @@ export default function Departments() {
       if (!confirmed) return;
     }
 
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const { error } = await supabase.from("departments").update({ status: next }).eq("id", row.id);
@@ -147,6 +154,7 @@ export default function Departments() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const removeDepartment = async (row: DepartmentRow) => {
@@ -156,6 +164,7 @@ export default function Departments() {
     );
     if (!confirmed) return;
 
+    await runGuarded(async () => {
     setBusy(true);
     try {
       const { error } = await supabase.from("departments").delete().eq("id", row.id);
@@ -167,10 +176,11 @@ export default function Departments() {
     } finally {
       setBusy(false);
     }
+    });
   };
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = sanitizeText(search, 200).toLowerCase();
     return departments.filter((d) => {
       const byStatus = statusFilter === "all" || d.status === statusFilter;
       const bySearch = term === "" || d.name.toLowerCase().includes(term);

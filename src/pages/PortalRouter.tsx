@@ -19,6 +19,8 @@ export default function PortalRouter() {
   const { data: departmentStatus = "active", isLoading: departmentLoading } = useQuery({
     queryKey: profile?.department_id ? ["auth", "department-status", profile.department_id] : ["auth", "department-status", "none"],
     enabled: !!user && isHospitalStaff && !!profile?.department_id,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("departments")

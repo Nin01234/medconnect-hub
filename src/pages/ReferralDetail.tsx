@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { hasRole } from "@/context/authRoles";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
@@ -42,6 +43,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   const [atts, setAtts] = useState<Att[]>([]);
   const [hist, setHist] = useState<Hist[]>([]);
   const [busy, setBusy] = useState(false);
+  const runGuarded = useSubmitGuard();
   const [reason, setReason] = useState("");
   const [feedback, setFeedback] = useState("");
   const [departmentId, setDepartmentId] = useState("");
@@ -159,12 +161,10 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   const canReject = !["accepted", "rejected", "completed"].includes(ref.status);
 
   const updateStatus = async (status: string, extra: Record<string, unknown> = {}) => {
-    setBusy(true);
     const cleaned: Record<string, unknown> = { status, ...extra };
     if (typeof cleaned.rejection_reason === "string") {
       const s = sanitizeText(cleaned.rejection_reason, 12000);
       if (!s.trim()) {
-        setBusy(false);
         toast.error("Enter a rejection reason.");
         return;
       }
@@ -173,23 +173,26 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     if (typeof cleaned.hospital_feedback === "string") {
       const s = sanitizeText(cleaned.hospital_feedback, 12000);
       if (!s.trim()) {
-        setBusy(false);
         toast.error("Enter feedback text.");
         return;
       }
       cleaned.hospital_feedback = s;
     }
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await supabase.from("referrals").update(cleaned as any).eq("id", ref.id);
-      if (error) throw error;
-      toast.success("Updated");
-      load();
-    } catch (e) {
-      toast.error(safeClientError(e));
-    } finally {
-      setBusy(false);
-    }
+    const referralId = ref.id;
+    await runGuarded(async () => {
+      setBusy(true);
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await supabase.from("referrals").update(cleaned as any).eq("id", referralId);
+        if (error) throw error;
+        toast.success("Updated");
+        load();
+      } catch (e) {
+        toast.error(safeClientError(e));
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   const downloadFile = async (att: Att) => {
@@ -210,24 +213,27 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
       return;
     }
     const values = parsed.data;
-    const { data, error } = await supabase
-      .from("doctors")
-      .insert({
-        hospital_id: ref.hospital_id,
-        full_name: sanitizeText(values.full_name, 200),
-        specialty: sanitizeText(values.specialty ?? "", 200) || null,
-        phone: sanitizeText(values.phone ?? "", 40) || null,
-        email: sanitizeText(values.email ?? "", 320) || null,
-      })
-      .select("id,full_name,specialty")
-      .single();
-    if (error) {
-      toast.error(safeClientError(error));
-      return;
-    }
-    setDoctorOptions((prev) => [...prev, data as DoctorOption]);
-    setNewDoctor({ full_name: "", specialty: "", phone: "", email: "" });
-    toast.success("Doctor created");
+    const hospitalId = ref.hospital_id;
+    await runGuarded(async () => {
+      const { data, error } = await supabase
+        .from("doctors")
+        .insert({
+          hospital_id: hospitalId,
+          full_name: sanitizeText(values.full_name, 200),
+          specialty: sanitizeText(values.specialty ?? "", 200) || null,
+          phone: sanitizeText(values.phone ?? "", 40) || null,
+          email: sanitizeText(values.email ?? "", 320) || null,
+        })
+        .select("id,full_name,specialty")
+        .single();
+      if (error) {
+        toast.error(safeClientError(error));
+        return;
+      }
+      setDoctorOptions((prev) => [...prev, data as DoctorOption]);
+      setNewDoctor({ full_name: "", specialty: "", phone: "", email: "" });
+      toast.success("Doctor created");
+    });
   };
 
   return (
