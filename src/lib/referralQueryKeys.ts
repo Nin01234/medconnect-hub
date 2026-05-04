@@ -10,4 +10,5 @@ export const referralKeys = {
   /** Clinic dashboard list. */
   clinicRoot: (clinicId: string) => [...referralKeys.all, "clinic", clinicId] as const,
   clinicDashboard: (clinicId: string) => [...referralKeys.clinicRoot(clinicId), "dashboard"] as const,
+  clinicMyReferrals: (clinicId: string) => [...referralKeys.clinicRoot(clinicId), "my-referrals"] as const,
 };

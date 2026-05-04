@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { referralKeys } from "@/lib/referralQueryKeys";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -23,27 +25,35 @@ interface Row {
 
 export default function MyReferrals() {
   const { profile } = useAuth();
-  const [rows, setRows] = useState<Row[]>([]);
+  const clinicId = profile?.clinic_id ?? null;
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
 
-  useEffect(() => {
-    if (!profile?.clinic_id) return;
-    supabase.from("referrals")
-      .select("id, referral_number, patient_id, patient_name, status, urgency_level, created_at, hospital_feedback, hospitals(name)")
-      .eq("clinic_id", profile.clinic_id)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => setRows((data ?? []) as unknown as Row[]));
-  }, [profile?.clinic_id]);
+  const { data: rows = [] } = useQuery({
+    queryKey: clinicId ? referralKeys.clinicMyReferrals(clinicId) : ["referrals", "clinic", "inactive", "my"],
+    enabled: !!clinicId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("referrals")
+        .select("id, referral_number, patient_id, patient_name, status, urgency_level, created_at, hospital_feedback, hospitals(name)")
+        .eq("clinic_id", clinicId!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as Row[];
+    },
+  });
 
   const normalizedQuery = sanitizeText(q, 200).toLowerCase();
-  const filtered = rows.filter(r =>
-    (status === "all" || r.status === status) &&
-    (
-      normalizedQuery === "" ||
-      r.patient_name.toLowerCase().includes(normalizedQuery) ||
-      r.referral_number?.toLowerCase().includes(normalizedQuery)
-    )
+  const filtered = useMemo(
+    () =>
+      rows.filter(
+        (r) =>
+          (status === "all" || r.status === status) &&
+          (normalizedQuery === "" ||
+            r.patient_name.toLowerCase().includes(normalizedQuery) ||
+            r.referral_number?.toLowerCase().includes(normalizedQuery)),
+      ),
+    [rows, status, normalizedQuery],
   );
 
   return (
@@ -53,12 +63,18 @@ export default function MyReferrals() {
         <p className="text-muted-foreground">{rows.length} total</p>
       </div>
       <div className="flex gap-3 flex-wrap">
-        <Input placeholder="Search patient or referral #" value={q} onChange={e => setQ(e.target.value)} className="max-w-sm" />
+        <Input placeholder="Search patient or referral #" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-sm" />
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
-            {["new","under_review","accepted","assigned","treated","completed","rejected","info_requested"].map(s => <SelectItem key={s} value={s}>{s.replace(/_/g," ")}</SelectItem>)}
+            {["new", "under_review", "accepted", "assigned", "treated", "completed", "rejected", "info_requested"].map((s) => (
+              <SelectItem key={s} value={s}>
+                {s.replace(/_/g, " ")}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -78,13 +94,21 @@ export default function MyReferrals() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(r => (
+              {filtered.map((r) => (
                 <tr key={r.id} className="border-b hover:bg-secondary/30">
-                  <td className="px-5 py-3 font-mono text-xs"><Link to={`/clinic/referrals/${r.id}`} className="text-primary hover:underline">{r.referral_number}</Link></td>
+                  <td className="px-5 py-3 font-mono text-xs">
+                    <Link to={`/clinic/referrals/${r.id}`} className="text-primary hover:underline">
+                      {r.referral_number}
+                    </Link>
+                  </td>
                   <td className="px-5 py-3 font-medium">{r.patient_name}</td>
                   <td className="px-5 py-3">{r.hospitals?.name ?? "—"}</td>
-                  <td className="px-5 py-3"><UrgencyBadge level={r.urgency_level} /></td>
-                  <td className="px-5 py-3"><StatusBadge status={r.status} /></td>
+                  <td className="px-5 py-3">
+                    <UrgencyBadge level={r.urgency_level} />
+                  </td>
+                  <td className="px-5 py-3">
+                    <StatusBadge status={r.status} />
+                  </td>
                   <td className="px-5 py-3">
                     {r.hospital_feedback?.trim() ? (
                       <Badge className="border-emerald-500/40 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 font-normal whitespace-nowrap">
@@ -106,7 +130,13 @@ export default function MyReferrals() {
                   <td className="px-5 py-3 text-muted-foreground text-xs">{new Date(r.created_at).toLocaleString()}</td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={8} className="text-center py-10 text-muted-foreground">No referrals match.</td></tr>}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="text-center py-10 text-muted-foreground">
+                    No referrals match.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </CardContent>

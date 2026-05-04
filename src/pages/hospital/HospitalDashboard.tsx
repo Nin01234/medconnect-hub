@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { hasRole } from "@/context/authRoles";
+import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { useDepartmentRow } from "@/hooks/useDepartmentRow";
 import { referralKeys } from "@/lib/referralQueryKeys";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
@@ -18,11 +20,6 @@ interface Row {
   urgency_level: string;
   created_at: string;
   clinics: { name: string } | null;
-}
-
-interface DepartmentInfo {
-  name: string;
-  status: string;
 }
 
 function AnimatedCount({ value }: { value: number }) {
@@ -58,20 +55,8 @@ export default function HospitalDashboard() {
   const fallbackHospitalName = profile?.hospitals?.name?.trim() ?? "";
   const isHospitalStaff = hasRole(roles, "hospital_staff");
 
-  const { data: staffDepartmentName = "" } = useQuery({
-    queryKey: profile?.department_id ? ["hospital", "staff-department", profile.department_id] : ["hospital", "staff-department", "none"],
-    enabled: isHospitalStaff && !!profile?.department_id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("departments")
-        .select("name,status")
-        .eq("id", profile!.department_id!)
-        .maybeSingle();
-      if (error) throw error;
-      const dep = data as DepartmentInfo | null;
-      return dep?.status === "active" ? (dep.name ?? "") : "";
-    },
-  });
+  const { data: deptRow } = useDepartmentRow(profile?.department_id, isHospitalStaff && !!profile?.department_id);
+  const staffDepartmentName = deptRow?.status === "active" ? (deptRow?.name ?? "") : "";
 
   const { data: hospitalName = fallbackHospitalName } = useQuery({
     queryKey: hospitalId ? ["hospital", "name", hospitalId] : ["hospital", "name", "inactive"],
@@ -104,6 +89,10 @@ export default function HospitalDashboard() {
     },
   });
 
+  const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
+    if (hospitalId) void queryClient.invalidateQueries({ queryKey: referralKeys.hospitalRoot(hospitalId) });
+  }, 400);
+
   useEffect(() => {
     if (!hospitalId) return;
     const ch = supabase
@@ -111,15 +100,14 @@ export default function HospitalDashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "referrals", filter: `hospital_id=eq.${hospitalId}` },
-        () => {
-          void queryClient.invalidateQueries({ queryKey: referralKeys.hospitalRoot(hospitalId) });
-        },
+        debouncedRealtime,
       )
       .subscribe();
     return () => {
+      cancelDebouncedRealtime();
       supabase.removeChannel(ch);
     };
-  }, [hospitalId, queryClient]);
+  }, [hospitalId, debouncedRealtime, cancelDebouncedRealtime]);
 
   const c = useMemo(
     () => ({

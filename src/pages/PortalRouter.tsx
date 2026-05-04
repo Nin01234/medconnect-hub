@@ -5,8 +5,7 @@ import { FullPageLoader } from "@/components/Guards";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useDepartmentRow } from "@/hooks/useDepartmentRow";
 
 export default function PortalRouter() {
   const { user, roles, loading, profile } = useAuth();
@@ -16,22 +15,11 @@ export default function PortalRouter() {
     normalizedStatus === "pending_approval" ||
     normalizedStatus === "suspended" ||
     normalizedStatus === "rejected";
-  const { data: departmentStatus = "active", isLoading: departmentLoading } = useQuery({
-    queryKey: profile?.department_id ? ["auth", "department-status", profile.department_id] : ["auth", "department-status", "none"],
-    enabled: !!user && isHospitalStaff && !!profile?.department_id,
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("departments")
-        .select("status,name")
-        .eq("id", profile!.department_id!)
-        .maybeSingle();
-      if (error) throw error;
-      const row = data as { status?: string } | null;
-      return row?.status ?? "inactive";
-    },
-  });
+  const { data: deptRow, isLoading: departmentLoading } = useDepartmentRow(
+    profile?.department_id,
+    !!user && isHospitalStaff && !!profile?.department_id,
+  );
+  const departmentStatus = deptRow?.status ?? "active";
   if (loading) return <FullPageLoader />;
   if (departmentLoading) return <FullPageLoader />;
   if (!user) return <Navigate to="/auth" replace />;

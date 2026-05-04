@@ -39,7 +39,8 @@ export default function HospitalInbox() {
         .from("referrals")
         .select("id, referral_number, patient_id, patient_name, status, urgency_level, created_at, clinics(name)")
         .eq("hospital_id", hospitalId!)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(400);
       const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as unknown as Row[];

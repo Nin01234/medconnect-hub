@@ -43,8 +43,9 @@ const PatientReferralHistory = lazy(() => import("./pages/PatientReferralHistory
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60_000,
-      gcTime: 5 * 60_000,
+      /** Lists feel instant when navigating back; realtime invalidation still refreshes when needed. */
+      staleTime: 90_000,
+      gcTime: 10 * 60_000,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: false,

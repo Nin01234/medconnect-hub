@@ -35,6 +35,10 @@ interface Hist { id: string; from_status: string | null; to_status: string; crea
 interface DepartmentOption { id: string; name: string }
 interface DoctorOption { id: string; full_name: string; specialty: string | null; }
 
+/** Narrow projection vs select('*') — smaller payload from PostgREST. */
+const REFERRAL_DETAIL_SELECT =
+  "id, unique_id, referral_number, patient_id, patient_name, patient_age, patient_gender, patient_phone, diagnosis, symptoms, urgency_level, vitals_bp, vitals_hr, vitals_temp, vitals_rr, vitals_spo2, referral_reason, notes, status, rejection_reason, hospital_feedback, clinic_id, hospital_id, assigned_department, department_id, assigned_staff_id, assigned_doctor_id, staff_assignment_locked, visible_to_all_departments, created_at, updated_at, created_by, clinics(name,unique_id,city,contact,region), hospitals(name,unique_id,city), departments(id,name)";
+
 export default function ReferralDetail({ portal }: { portal: "clinic" | "hospital" }) {
   const { id } = useParams();
   const nav = useNavigate();
@@ -56,9 +60,11 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
 
   const load = useCallback(async () => {
     if (!id) return;
-    const { data, error } = await supabase.from("referrals")
-      .select("*, clinics(name,unique_id,city,contact,region), hospitals(name,unique_id,city), departments(id,name)")
-      .eq("id", id).maybeSingle();
+    const { data, error } = await supabase
+      .from("referrals")
+      .select(REFERRAL_DETAIL_SELECT)
+      .eq("id", id)
+      .maybeSingle();
     if (error) {
       toast.error(safeClientError(error));
       setRef(null);
@@ -73,35 +79,49 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     }
     setRef(data as unknown as Referral);
     setVisibleAllDepartments(Boolean((data as { visible_to_all_departments?: boolean }).visible_to_all_departments));
-    const [{ data: a, error: attachmentsErr }, { data: h, error: historyErr }] = await Promise.all([
-      supabase.from("referral_attachments").select("*").eq("referral_id", id),
-      supabase.from("referral_status_history").select("*").eq("referral_id", id).order("created_at"),
+    const hospitalId = (data as { hospital_id?: string | null }).hospital_id;
+
+    const [attRes, histRes, depRes, docRes] = await Promise.all([
+      supabase
+        .from("referral_attachments")
+        .select("id, file_path, file_name, mime_type, created_at, size_bytes, uploaded_by")
+        .eq("referral_id", id),
+      supabase
+        .from("referral_status_history")
+        .select("id, from_status, to_status, created_at, note, changed_by, referral_id")
+        .eq("referral_id", id)
+        .order("created_at"),
+      hospitalId
+        ? supabase
+            .from("departments")
+            .select("id,name")
+            .eq("hospital_id", hospitalId)
+            .eq("status", "active")
+            .order("name")
+        : Promise.resolve({ data: null, error: null }),
+      hospitalId
+        ? supabase
+            .from("doctors")
+            .select("id,full_name,specialty")
+            .eq("hospital_id", hospitalId)
+            .eq("status", "active")
+            .order("full_name")
+        : Promise.resolve({ data: null, error: null }),
     ]);
-    if (attachmentsErr) {
-      toast.error(`Failed to load attachments: ${safeClientError(attachmentsErr)}`);
+
+    if (attRes.error) {
+      toast.error(`Failed to load attachments: ${safeClientError(attRes.error)}`);
     }
-    if (historyErr) {
-      toast.error(`Failed to load timeline: ${safeClientError(historyErr)}`);
+    if (histRes.error) {
+      toast.error(`Failed to load timeline: ${safeClientError(histRes.error)}`);
     }
-    setAtts((a ?? []) as Att[]);
-    const historyRows = (h ?? []) as Hist[];
+    setAtts((attRes.data ?? []) as Att[]);
+    const historyRows = (histRes.data ?? []) as Hist[];
     setHist(historyRows);
-    if ((data as { hospital_id?: string | null })?.hospital_id) {
-      const hospitalId = (data as { hospital_id: string }).hospital_id;
-      const { data: deps } = await supabase
-        .from("departments")
-        .select("id,name")
-        .eq("hospital_id", hospitalId)
-        .eq("status", "active")
-        .order("name");
-      setDepartmentOptions((deps ?? []) as DepartmentOption[]);
-      const { data: doctors } = await supabase
-        .from("doctors")
-        .select("id,full_name,specialty")
-        .eq("hospital_id", hospitalId)
-        .eq("status", "active")
-        .order("full_name");
-      setDoctorOptions((doctors ?? []) as DoctorOption[]);
+
+    if (hospitalId) {
+      setDepartmentOptions((depRes.data ?? []) as DepartmentOption[]);
+      setDoctorOptions((docRes.data ?? []) as DoctorOption[]);
     } else {
       setDepartmentOptions([]);
       setDoctorOptions([]);

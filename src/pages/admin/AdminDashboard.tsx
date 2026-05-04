@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { hasRole } from "@/context/authRoles";
@@ -16,14 +16,15 @@ interface RecentAudit {
 
 export default function AdminDashboard() {
   const { profile, user, loading, roles } = useAuth();
-  const [c, setC] = useState({ users: 0, clinics: 0, hospitals: 0, referrals: 0, pendingApprovals: 0 });
-  const [recentAudits, setRecentAudits] = useState<RecentAudit[]>([]);
-  useEffect(() => {
-    if (loading || !user || !hasRole(roles, "admin")) return;
-    let cancelled = false;
-    (async () => {
-      const { data: ses } = await supabase.auth.getSession();
-      if (cancelled || !ses.session?.access_token) return;
+
+  const canFetch = !loading && !!user && hasRole(roles, "admin");
+
+  const { data: bundle } = useQuery({
+    queryKey: ["admin", "dashboard-stats"],
+    enabled: canFetch,
+    staleTime: 45_000,
+    gcTime: 10 * 60_000,
+    queryFn: async () => {
       const [u, cl, h, r, pending, audits] = await Promise.all([
         supabase.from("profiles").select("id", { count: "exact", head: true }),
         supabase.from("clinics").select("id", { count: "exact", head: true }),
@@ -32,24 +33,24 @@ export default function AdminDashboard() {
         supabase.from("profiles").select("id", { count: "exact", head: true }).eq("status", "pending_approval"),
         supabase.from("audit_logs").select("id, action, created_at").order("created_at", { ascending: false }).limit(5),
       ]);
-      if (cancelled) return;
       const errors = [u.error, cl.error, h.error, r.error, pending.error, audits.error].filter(Boolean);
       if (errors.length > 0) {
         console.error("Admin dashboard stats:", errors);
       }
-      setC({
+      return {
         users: u.count ?? 0,
         clinics: cl.count ?? 0,
         hospitals: h.count ?? 0,
         referrals: r.count ?? 0,
         pendingApprovals: pending.count ?? 0,
-      });
-      setRecentAudits((audits.data ?? []) as RecentAudit[]);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, user, roles]);
+        recentAudits: (audits.data ?? []) as RecentAudit[],
+      };
+    },
+  });
+
+  const c = bundle ?? { users: 0, clinics: 0, hospitals: 0, referrals: 0, pendingApprovals: 0 };
+  const recentAudits = bundle?.recentAudits ?? [];
+
   return (
     <div className="space-y-6">
       <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-r from-primary/10 via-accent/10 to-background p-6 shadow-card">
@@ -68,9 +69,15 @@ export default function AdminDashboard() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link to="/admin/users"><Button variant="outlineBrand">Manage users</Button></Link>
-            <Link to="/admin/approvals"><Button variant="gold">Review approvals</Button></Link>
-            <Link to="/admin/audit"><Button variant="outline">Open audit logs</Button></Link>
+            <Link to="/admin/users">
+              <Button variant="outlineBrand">Manage users</Button>
+            </Link>
+            <Link to="/admin/approvals">
+              <Button variant="gold">Review approvals</Button>
+            </Link>
+            <Link to="/admin/audit">
+              <Button variant="outline">Open audit logs</Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -116,7 +123,9 @@ export default function AdminDashboard() {
           <CardContent className="p-6">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="font-display text-xl font-semibold">Recent Activity</h2>
-              <Link to="/admin/audit" className="text-xs text-primary inline-flex items-center">View all <ArrowRight className="ml-1 h-3.5 w-3.5" /></Link>
+              <Link to="/admin/audit" className="text-xs text-primary inline-flex items-center">
+                View all <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Link>
             </div>
             <div className="space-y-3">
               {recentAudits.length === 0 ? (
