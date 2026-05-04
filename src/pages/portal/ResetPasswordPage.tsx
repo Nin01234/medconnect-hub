@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { resetPasswordSchema } from "@/lib/validation";
 import { safeClientError } from "@/lib/safeError";
+import { consumeBrowserRateLimit, formatRetrySeconds } from "@/lib/clientRateLimit";
 
 export default function ResetPasswordPage() {
   const [busy, setBusy] = useState(false);
@@ -36,6 +37,11 @@ export default function ResetPasswordPage() {
     await runGuarded(async () => {
       setBusy(true);
       try {
+        const pwLimit = consumeBrowserRateLimit("auth_password_update", 8, 900_000);
+        if (!pwLimit.ok) {
+          toast.error(`Too many password updates. Try again in about ${formatRetrySeconds(pwLimit.retryAfterMs)}s.`);
+          return;
+        }
         const { error } = await supabase.auth.updateUser({ password: parsed.data.new_password });
         if (error) throw error;
         toast.success("Password updated.");

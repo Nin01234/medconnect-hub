@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { authSignInSchema, LIMITS } from "@/lib/validation";
 import { safeClientError } from "@/lib/safeError";
 import { sanitizeLoginIdentifier } from "@/lib/sanitize";
+import { consumeBrowserRateLimit, formatRetrySeconds } from "@/lib/clientRateLimit";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 export default function Auth() {
@@ -39,6 +40,11 @@ export default function Auth() {
         const parsed = authSignInSchema.safeParse({ identifier: normalizedIdentifier, password });
         if (!parsed.success) {
           toast.error(parsed.error.issues[0]?.message ?? "Check your input.");
+          return;
+        }
+        const signInLimit = consumeBrowserRateLimit("auth_sign_in", 14, 900_000);
+        if (!signInLimit.ok) {
+          toast.error(`Too many sign-in attempts. Try again in about ${formatRetrySeconds(signInLimit.retryAfterMs)}s.`);
           return;
         }
         let emailForLogin = parsed.data.identifier;

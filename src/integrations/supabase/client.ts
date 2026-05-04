@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from './types';
 import { sanitizePayload } from "@/lib/sanitizePayload";
+import { consumeBrowserRateLimit, formatRetrySeconds } from "@/lib/clientRateLimit";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -94,6 +95,24 @@ function patchWriteSanitization(client: SupabaseClient<Database>): SupabaseClien
 
   const originalInvoke = mutableClient.functions.invoke.bind(mutableClient.functions);
   mutableClient.functions.invoke = ((fn: string, options?: { body?: unknown; [key: string]: unknown }) => {
+    const globalLimit = consumeBrowserRateLimit("fn_invoke_global", 120, 60_000);
+    if (!globalLimit.ok) {
+      const s = formatRetrySeconds(globalLimit.retryAfterMs);
+      return Promise.resolve({
+        data: null,
+        error: new Error(`Too many requests. Try again in about ${s}s.`),
+      }) as ReturnType<typeof originalInvoke>;
+    }
+    if (fn === "resolve-login-identifier") {
+      const r = consumeBrowserRateLimit("fn_resolve_login", 20, 300_000);
+      if (!r.ok) {
+        const s = formatRetrySeconds(r.retryAfterMs);
+        return Promise.resolve({
+          data: null,
+          error: new Error(`Too many login lookups. Try again in about ${s}s.`),
+        }) as ReturnType<typeof originalInvoke>;
+      }
+    }
     if (!options || !("body" in options)) {
       return originalInvoke(fn, options);
     }
