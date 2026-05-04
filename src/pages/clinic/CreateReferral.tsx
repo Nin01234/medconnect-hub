@@ -51,6 +51,7 @@ export default function CreateReferral() {
     e.preventDefault();
     setUploadErrors([]);
     if (!profile?.clinic_id) return toast.error("Your account is not linked to a clinic");
+    if (!user?.id) return toast.error("You must be signed in to submit a referral");
     if (!form.hospital_id) return toast.error("Select a preferred hospital");
     const parsed = createReferralSchema.safeParse({
       ...form,
@@ -122,7 +123,7 @@ export default function CreateReferral() {
           notes: v.notes ? sanitizeText(v.notes, 12000) : null,
           hospital_id: v.hospital_id,
           clinic_id: profile.clinic_id,
-          created_by: user!.id,
+          created_by: user.id,
           status: "new",
         })
         .select("id")
@@ -141,7 +142,7 @@ export default function CreateReferral() {
           continue;
         }
         const { error: insertAttErr } = await supabase.from("referral_attachments").insert({
-          referral_id: ref.id, file_path: path, file_name: safeName, mime_type: f.type, size_bytes: f.size, uploaded_by: user!.id,
+          referral_id: ref.id, file_path: path, file_name: safeName, mime_type: f.type, size_bytes: f.size, uploaded_by: user.id,
         });
         if (insertAttErr) {
           console.error(insertAttErr);

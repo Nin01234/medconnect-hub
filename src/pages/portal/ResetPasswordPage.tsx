@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,12 +9,23 @@ import { toast } from "sonner";
 import { resetPasswordSchema } from "@/lib/validation";
 import { safeClientError } from "@/lib/safeError";
 import { consumeBrowserRateLimit, formatRetrySeconds } from "@/lib/clientRateLimit";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function ResetPasswordPage() {
   const [busy, setBusy] = useState(false);
   const runGuarded = useSubmitGuard();
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!pw) setShowPassword(false);
+  }, [pw]);
+
+  useEffect(() => {
+    if (!pw2) setShowPasswordConfirm(false);
+  }, [pw2]);
 
   const canSubmit = useMemo(() => {
     if (busy) return false;
@@ -66,11 +77,57 @@ export default function ResetPasswordPage() {
           <form className="mt-6 space-y-4" onSubmit={submit}>
             <div>
               <Label htmlFor="pw">New password</Label>
-              <Input id="pw" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} />
+              <div className="relative">
+                <Input
+                  id="pw"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  value={pw}
+                  onChange={(e) => setPw(e.target.value)}
+                  disabled={busy}
+                  className={pw ? "pr-20" : ""}
+                />
+                {pw && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground hover:text-foreground transition"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      {showPassword ? "Hide" : "Show"}
+                    </span>
+                  </button>
+                )}
+              </div>
             </div>
             <div>
               <Label htmlFor="pw2">Confirm new password</Label>
-              <Input id="pw2" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+              <div className="relative">
+                <Input
+                  id="pw2"
+                  type={showPasswordConfirm ? "text" : "password"}
+                  autoComplete="new-password"
+                  value={pw2}
+                  onChange={(e) => setPw2(e.target.value)}
+                  disabled={busy}
+                  className={pw2 ? "pr-20" : ""}
+                />
+                {pw2 && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground hover:text-foreground transition"
+                    onClick={() => setShowPasswordConfirm((v) => !v)}
+                    aria-label={showPasswordConfirm ? "Hide confirm password" : "Show confirm password"}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {showPasswordConfirm ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      {showPasswordConfirm ? "Hide" : "Show"}
+                    </span>
+                  </button>
+                )}
+              </div>
             </div>
             <Button type="submit" variant="hero" disabled={!canSubmit}>
               {busy ? "Updating..." : "Update password"}
