@@ -19,6 +19,7 @@ interface Row {
   status: string;
   urgency_level: string;
   created_at: string;
+  assigned_staff_id: string | null;
   clinics: { name: string } | null;
 }
 
@@ -54,6 +55,8 @@ export default function HospitalDashboard() {
   const hospitalId = profile?.hospital_id ?? null;
   const fallbackHospitalName = profile?.hospitals?.name?.trim() ?? "";
   const isHospitalStaff = hasRole(roles, "hospital_staff");
+  /** Admins triage unassigned referrals; hospital-only staff must only see cases assigned to them in-app. */
+  const canTriageHospitalQueue = hasRole(roles, "admin") || hasRole(roles, "hospital_admin");
 
   const { data: deptRow } = useDepartmentRow(profile?.department_id, isHospitalStaff && !!profile?.department_id);
   const staffDepartmentName = deptRow?.status === "active" ? (deptRow?.name ?? "") : "";
@@ -73,13 +76,16 @@ export default function HospitalDashboard() {
     },
   });
 
-  const { data: rows = [] } = useQuery({
+  const {
+    data: rows = [],
+    isPending: referralsQueryPending,
+  } = useQuery({
     queryKey: hospitalId ? referralKeys.hospitalDashboard(hospitalId) : ["referrals", "hospital", "inactive", "dashboard"],
     enabled: !!hospitalId,
     queryFn: async () => {
       const query = supabase
         .from("referrals")
-        .select("id, referral_number, patient_name, status, urgency_level, created_at, clinics(name)")
+        .select("id, referral_number, patient_name, status, urgency_level, created_at, assigned_staff_id, clinics(name)")
         .eq("hospital_id", hospitalId!)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -109,25 +115,34 @@ export default function HospitalDashboard() {
     };
   }, [hospitalId, debouncedRealtime, cancelDebouncedRealtime]);
 
+  const scopedRows = useMemo(() => {
+    if (canTriageHospitalQueue) return rows;
+    const uid = profile?.id;
+    return rows.filter((r) => r.assigned_staff_id != null && r.assigned_staff_id === uid);
+  }, [rows, canTriageHospitalQueue, profile?.id]);
+
   const c = useMemo(
     () => ({
-      new: rows.filter((r) => r.status === "new").length,
-      high: rows.filter((r) => ["high", "critical"].includes(r.urgency_level) && !["completed", "rejected"].includes(r.status)).length,
-      accepted: rows.filter((r) => r.status === "accepted").length,
-      rejected: rows.filter((r) => r.status === "rejected").length,
-      assigned: rows.filter((r) => ["assigned", "treated"].includes(r.status)).length,
-      completed: rows.filter((r) => r.status === "completed").length,
+      new: scopedRows.filter((r) => r.status === "new").length,
+      high: scopedRows.filter((r) => ["high", "critical"].includes(r.urgency_level) && !["completed", "rejected"].includes(r.status)).length,
+      accepted: scopedRows.filter((r) => r.status === "accepted").length,
+      rejected: scopedRows.filter((r) => r.status === "rejected").length,
+      assigned: scopedRows.filter((r) => ["assigned", "treated"].includes(r.status)).length,
+      completed: scopedRows.filter((r) => r.status === "completed").length,
     }),
-    [rows],
+    [scopedRows],
   );
 
   const priority = useMemo(
     () =>
-      rows
+      scopedRows
         .filter((r) => ["new", "under_review", "accepted", "assigned", "info_requested"].includes(r.status))
         .slice(0, 6),
-    [rows],
+    [scopedRows],
   );
+
+  const showPriorityQueueLoading = !!hospitalId && referralsQueryPending;
+
   const heroHighlights = useMemo(
     () => [
       "Review incoming referrals, prioritize critical cases, and monitor outcomes.",
@@ -236,7 +251,9 @@ export default function HospitalDashboard() {
               Open inbox →
             </Link>
           </div>
-          {priority.length === 0 ? (
+          {showPriorityQueueLoading ? (
+            <p className="p-10 text-center text-muted-foreground">Loading queue…</p>
+          ) : priority.length === 0 ? (
             <p className="p-10 text-center text-muted-foreground">Nothing pending. Great work.</p>
           ) : (
             <div className="divide-y">

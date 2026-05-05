@@ -89,7 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         : null;
       const metadataRole = isAppRole(authUser?.app_metadata?.role) ? authUser.app_metadata.role : null;
       const fallbackRoles = [profileRole, metadataRole].filter(isAppRole);
-      const rolesList = dbRoles.length > 0 ? dbRoles : fallbackRoles;
+      /** Union table roles with profile/JWT fallbacks. If user_roles only lists e.g. hospital_staff but profiles.role is hospital_admin, both must apply for RBAC. */
+      const rolesList = Array.from(new Set<AppRole>([...dbRoles, ...fallbackRoles]));
       if (!p) {
         setProfile(null);
         setRoles(rolesList);
