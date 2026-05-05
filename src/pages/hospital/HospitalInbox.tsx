@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { hasRole } from "@/context/authRoles";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { applyHospitalReferralListFilters, hospitalReferralListScopeKey } from "@/lib/hospitalReferralListFilters";
 import { referralKeys } from "@/lib/referralQueryKeys";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,25 +25,30 @@ interface Row {
 }
 
 export default function HospitalInbox() {
-  const { profile } = useAuth();
+  const { profile, roles } = useAuth();
   const queryClient = useQueryClient();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
   const [urgency, setUrgency] = useState("all");
 
   const hospitalId = profile?.hospital_id ?? null;
+  const canTriageHospitalQueue = hasRole(roles, "admin") || hasRole(roles, "hospital_admin");
+  const staffDepartmentId = profile?.department_id ?? null;
+  const listScope = hospitalReferralListScopeKey(canTriageHospitalQueue, staffDepartmentId);
 
   const { data: rows = [] } = useQuery({
-    queryKey: hospitalId ? referralKeys.hospitalInbox(hospitalId) : ["referrals", "hospital", "inactive", "inbox"],
+    queryKey: hospitalId ? referralKeys.hospitalInbox(hospitalId, listScope) : ["referrals", "hospital", "inactive", "inbox"],
     enabled: !!hospitalId,
     queryFn: async () => {
-      const query = supabase
+      let query = supabase
         .from("referrals")
         .select("id, referral_number, patient_id, patient_name, status, urgency_level, created_at, clinics(name)")
-        .eq("hospital_id", hospitalId!)
-        .order("created_at", { ascending: false })
-        .limit(400);
-      const { data, error } = await query;
+        .eq("hospital_id", hospitalId!);
+      query = applyHospitalReferralListFilters(query, {
+        canTriageHospitalQueue,
+        departmentId: staffDepartmentId,
+      });
+      const { data, error } = await query.order("created_at", { ascending: false }).limit(400);
       if (error) throw error;
       return (data ?? []) as unknown as Row[];
     },
@@ -54,7 +61,7 @@ export default function HospitalInbox() {
   useEffect(() => {
     if (!hospitalId) return;
     const ch = supabase
-      .channel("inbox")
+      .channel(`hospital-inbox-${hospitalId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "referrals", filter: `hospital_id=eq.${hospitalId}` },

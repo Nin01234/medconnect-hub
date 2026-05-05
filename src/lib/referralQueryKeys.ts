@@ -4,8 +4,10 @@ export const referralKeys = {
   all: ["referrals"] as const,
   /** Invalidate all hospital-scoped referral lists (dashboard + inbox) for one hospital. */
   hospitalRoot: (hospitalId: string) => [...referralKeys.all, "hospital", hospitalId] as const,
-  hospitalDashboard: (hospitalId: string) => [...referralKeys.hospitalRoot(hospitalId), "dashboard"] as const,
-  hospitalInbox: (hospitalId: string) => [...referralKeys.hospitalRoot(hospitalId), "inbox"] as const,
+  hospitalDashboard: (hospitalId: string, listScope: string) =>
+    [...referralKeys.hospitalRoot(hospitalId), "dashboard", listScope] as const,
+  hospitalInbox: (hospitalId: string, listScope: string) =>
+    [...referralKeys.hospitalRoot(hospitalId), "inbox", listScope] as const,
   hospitalAssigned: (hospitalId: string) => [...referralKeys.hospitalRoot(hospitalId), "assigned"] as const,
   /** Clinic dashboard list. */
   clinicRoot: (clinicId: string) => [...referralKeys.all, "clinic", clinicId] as const,

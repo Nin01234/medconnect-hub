@@ -160,8 +160,19 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   useEffect(() => {
     load();
     if (!id) return;
-    const ch = supabase.channel(`ref-${id}`)
+    const ch = supabase
+      .channel(`ref-detail-${id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "referrals", filter: `id=eq.${id}` }, debouncedRealtime)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "referral_status_history", filter: `referral_id=eq.${id}` },
+        debouncedRealtime,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "referral_attachments", filter: `referral_id=eq.${id}` },
+        debouncedRealtime,
+      )
       .subscribe();
     return () => {
       cancelDebouncedRealtime();

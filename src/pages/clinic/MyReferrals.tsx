@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { referralKeys } from "@/lib/referralQueryKeys";
+import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,6 +26,7 @@ interface Row {
 
 export default function MyReferrals() {
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const clinicId = profile?.clinic_id ?? null;
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
@@ -42,6 +44,26 @@ export default function MyReferrals() {
       return (data ?? []) as unknown as Row[];
     },
   });
+
+  const [debouncedClinicList, cancelDebouncedClinicList] = useDebouncedCallback(() => {
+    if (clinicId) void queryClient.invalidateQueries({ queryKey: referralKeys.clinicRoot(clinicId) });
+  }, 400);
+
+  useEffect(() => {
+    if (!clinicId) return;
+    const ch = supabase
+      .channel(`clinic-my-refs-${clinicId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "referrals", filter: `clinic_id=eq.${clinicId}` },
+        debouncedClinicList,
+      )
+      .subscribe();
+    return () => {
+      cancelDebouncedClinicList();
+      supabase.removeChannel(ch);
+    };
+  }, [clinicId, debouncedClinicList, cancelDebouncedClinicList, queryClient]);
 
   const normalizedQuery = sanitizeText(q, 200).toLowerCase();
   const filtered = useMemo(

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
@@ -51,97 +52,124 @@ export default function PatientReferralHistory({ portal }: { portal: "clinic" | 
   const referralHref = (id: string) =>
     portal === "clinic" ? `/clinic/referrals/${id}` : `/hospital/referrals/${id}/review`;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
     if (!patientId) return;
-    setLoading(true);
-    const { data: refs, error: rErr } = await supabase
-      .from("referrals")
-      .select(
-        "id, referral_number, unique_id, patient_name, patient_age, patient_gender, patient_phone, status, urgency_level, created_at, assigned_doctor_id, hospitals(name), clinics(name)",
-      )
-      .eq("patient_id", patientId)
-      .order("created_at", { ascending: false });
+    if (!silent) setLoading(true);
+    try {
+      const { data: refs, error: rErr } = await supabase
+        .from("referrals")
+        .select(
+          "id, referral_number, unique_id, patient_name, patient_age, patient_gender, patient_phone, status, urgency_level, created_at, assigned_doctor_id, hospitals(name), clinics(name)",
+        )
+        .eq("patient_id", patientId)
+        .order("created_at", { ascending: false });
 
-    if (rErr) {
-      toast.error(safeClientError(rErr));
-      setPatient(null);
-      setReferrals([]);
-      setLoading(false);
-      return;
-    }
+      if (rErr) {
+        if (!silent) {
+          toast.error(safeClientError(rErr));
+          setPatient(null);
+          setReferrals([]);
+        }
+        return;
+      }
 
-    const normalizedRefs = ((refs ?? []) as unknown as Omit<ReferralRow, "doctors">[]).map((row) => ({
-      ...row,
-      doctors: null,
-    }));
+      const normalizedRefs = ((refs ?? []) as unknown as Omit<ReferralRow, "doctors">[]).map((row) => ({
+        ...row,
+        doctors: null,
+      }));
 
-    const doctorIds = Array.from(
-      new Set(normalizedRefs.map((row) => row.assigned_doctor_id).filter((id): id is string => !!id)),
-    );
-    if (doctorIds.length > 0) {
-      const { data: doctorsData, error: doctorsErr } = await supabase
-        .from("doctors")
-        .select("id, full_name, specialty, phone, email")
-        .in("id", doctorIds);
-      if (doctorsErr) {
-        toast.error(safeClientError(doctorsErr));
-      } else {
-        const doctorById = new Map((doctorsData as DoctorRow[] | null | undefined)?.map((d) => [d.id, d]) ?? []);
-        for (const row of normalizedRefs) {
-          row.doctors = row.assigned_doctor_id ? doctorById.get(row.assigned_doctor_id) ?? null : null;
+      const doctorIds = Array.from(
+        new Set(normalizedRefs.map((row) => row.assigned_doctor_id).filter((id): id is string => !!id)),
+      );
+      if (doctorIds.length > 0) {
+        const { data: doctorsData, error: doctorsErr } = await supabase
+          .from("doctors")
+          .select("id, full_name, specialty, phone, email")
+          .in("id", doctorIds);
+        if (doctorsErr) {
+          if (!silent) toast.error(safeClientError(doctorsErr));
+        } else {
+          const doctorById = new Map((doctorsData as DoctorRow[] | null | undefined)?.map((d) => [d.id, d]) ?? []);
+          for (const row of normalizedRefs) {
+            row.doctors = row.assigned_doctor_id ? doctorById.get(row.assigned_doctor_id) ?? null : null;
+          }
         }
       }
-    }
 
-    setReferrals(normalizedRefs);
+      setReferrals(normalizedRefs);
 
-    const latest = normalizedRefs[0] ?? null;
-    const fallbackPatient: PatientRow | null = latest
-      ? {
-          id: patientId,
-          full_name: latest.patient_name,
-          age: latest.patient_age,
-          gender: latest.patient_gender,
-          phone: latest.patient_phone,
+      const latest = normalizedRefs[0] ?? null;
+      const fallbackPatient: PatientRow | null = latest
+        ? {
+            id: patientId,
+            full_name: latest.patient_name,
+            age: latest.patient_age,
+            gender: latest.patient_gender,
+            phone: latest.patient_phone,
+          }
+        : null;
+
+      const { data: p, error: pErr } = await supabase
+        .from("patients")
+        .select("id, full_name, age, gender, phone")
+        .eq("id", patientId)
+        .maybeSingle();
+
+      if (pErr) {
+        if (fallbackPatient) {
+          setPatient(fallbackPatient);
+        } else if (!silent) {
+          toast.error(safeClientError(pErr));
+          setPatient(null);
         }
-      : null;
-
-    const { data: p, error: pErr } = await supabase
-      .from("patients")
-      .select("id, full_name, age, gender, phone")
-      .eq("id", patientId)
-      .maybeSingle();
-
-    if (pErr) {
-      // Patient table can be stricter than referrals under RLS; preserve page usability.
-      if (fallbackPatient) {
-        setPatient(fallbackPatient);
-      } else {
-        toast.error(safeClientError(pErr));
-        setPatient(null);
+        return;
       }
-      setLoading(false);
-      return;
-    }
 
-    if (!p) {
-      if (fallbackPatient) {
-        setPatient(fallbackPatient);
-      } else {
-        toast.error("Patient not found or you don't have access.");
-        setPatient(null);
+      if (!p) {
+        if (fallbackPatient) {
+          setPatient(fallbackPatient);
+        } else if (!silent) {
+          toast.error("Patient not found or you don't have access.");
+          setPatient(null);
+        }
+        return;
       }
-      setLoading(false);
-      return;
-    }
 
-    setPatient(p as unknown as PatientRow);
-    setLoading(false);
+      setPatient(p as unknown as PatientRow);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, [patientId]);
+
+  const [debouncedPatientRealtime, cancelDebouncedPatientRealtime] = useDebouncedCallback(() => {
+    void load({ silent: true });
+  }, 400);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!patientId) return;
+    const ch = supabase
+      .channel(`patient-rt-${patientId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "patients", filter: `id=eq.${patientId}` },
+        debouncedPatientRealtime,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "referrals", filter: `patient_id=eq.${patientId}` },
+        debouncedPatientRealtime,
+      )
+      .subscribe();
+    return () => {
+      cancelDebouncedPatientRealtime();
+      supabase.removeChannel(ch);
+    };
+  }, [patientId, debouncedPatientRealtime, cancelDebouncedPatientRealtime]);
 
   if (loading) {
     return <div className="p-10 text-center text-muted-foreground">Loading…</div>;

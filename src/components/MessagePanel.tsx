@@ -31,8 +31,45 @@ export function MessagePanel({ referralId, readOnly = false }: { referralId: str
 
   useEffect(() => {
     load();
-    const ch = supabase.channel(`msgs-${referralId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "referral_messages", filter: `referral_id=eq.${referralId}` }, debouncedRealtime)
+    const ch = supabase
+      .channel(`msgs-${referralId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "referral_messages", filter: `referral_id=eq.${referralId}` },
+        (payload) => {
+          const row = payload.new as Record<string, unknown> | null;
+          const mid = row?.id != null ? String(row.id) : null;
+          const body = row?.message;
+          const created = row?.created_at != null ? String(row.created_at) : null;
+          if (mid && typeof body === "string" && created) {
+            setMsgs((prev) => {
+              if (prev.some((m) => m.id === mid)) return prev;
+              const next: Msg[] = [
+                ...prev,
+                {
+                  id: mid,
+                  sender_id: row?.sender_id != null ? String(row.sender_id) : null,
+                  message: body,
+                  created_at: created,
+                },
+              ];
+              return next.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            });
+          } else {
+            debouncedRealtime();
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "referral_messages", filter: `referral_id=eq.${referralId}` },
+        debouncedRealtime,
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "referral_messages", filter: `referral_id=eq.${referralId}` },
+        debouncedRealtime,
+      )
       .subscribe();
     return () => {
       cancelDebouncedRealtime();

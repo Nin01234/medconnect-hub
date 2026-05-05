@@ -6,9 +6,15 @@ import { hasRole } from "@/context/authRoles";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { useDepartmentRow } from "@/hooks/useDepartmentRow";
 import { referralKeys } from "@/lib/referralQueryKeys";
+import {
+  applyHospitalReferralListFilters,
+  hospitalReferralListScopeKey,
+  referralRowVisibleToHospitalViewer,
+} from "@/lib/hospitalReferralListFilters";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { Inbox, Flame, CheckCircle2, XCircle, ClipboardList, Award, Building2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -20,7 +26,27 @@ interface Row {
   urgency_level: string;
   created_at: string;
   assigned_staff_id: string | null;
+  department_id: string | null;
+  visible_to_all_departments: boolean;
   clinics: { name: string } | null;
+}
+
+/** Map realtime payload to dashboard row shape (joined `clinics` often missing until refetch). */
+function rowFromReferralRealtime(record: Record<string, unknown>): Row | null {
+  const id = record.id != null ? String(record.id) : null;
+  if (!id) return null;
+  return {
+    id,
+    referral_number: record.referral_number != null ? String(record.referral_number) : null,
+    patient_name: typeof record.patient_name === "string" ? record.patient_name : "",
+    status: typeof record.status === "string" ? record.status : "",
+    urgency_level: typeof record.urgency_level === "string" ? record.urgency_level : "medium",
+    created_at: record.created_at != null ? String(record.created_at) : new Date().toISOString(),
+    assigned_staff_id: record.assigned_staff_id != null ? String(record.assigned_staff_id) : null,
+    department_id: record.department_id != null ? String(record.department_id) : null,
+    visible_to_all_departments: record.visible_to_all_departments === true,
+    clinics: null,
+  };
 }
 
 function AnimatedCount({ value }: { value: number }) {
@@ -55,8 +81,10 @@ export default function HospitalDashboard() {
   const hospitalId = profile?.hospital_id ?? null;
   const fallbackHospitalName = profile?.hospitals?.name?.trim() ?? "";
   const isHospitalStaff = hasRole(roles, "hospital_staff");
-  /** Admins triage unassigned referrals; hospital-only staff must only see cases assigned to them in-app. */
+  /** Admins triage unassigned referrals; other roles use shared inbox + department queue. */
   const canTriageHospitalQueue = hasRole(roles, "admin") || hasRole(roles, "hospital_admin");
+  const staffDepartmentId = profile?.department_id ?? null;
+  const listScope = hospitalReferralListScopeKey(canTriageHospitalQueue, staffDepartmentId);
 
   const { data: deptRow } = useDepartmentRow(profile?.department_id, isHospitalStaff && !!profile?.department_id);
   const staffDepartmentName = deptRow?.status === "active" ? (deptRow?.name ?? "") : "";
@@ -80,16 +108,20 @@ export default function HospitalDashboard() {
     data: rows = [],
     isPending: referralsQueryPending,
   } = useQuery({
-    queryKey: hospitalId ? referralKeys.hospitalDashboard(hospitalId) : ["referrals", "hospital", "inactive", "dashboard"],
+    queryKey: hospitalId ? referralKeys.hospitalDashboard(hospitalId, listScope) : ["referrals", "hospital", "inactive", "dashboard"],
     enabled: !!hospitalId,
     queryFn: async () => {
-      const query = supabase
+      let query = supabase
         .from("referrals")
-        .select("id, referral_number, patient_name, status, urgency_level, created_at, assigned_staff_id, clinics(name)")
-        .eq("hospital_id", hospitalId!)
-        .order("created_at", { ascending: false })
-        .limit(100);
-      const { data, error } = await query;
+        .select(
+          "id, referral_number, patient_name, status, urgency_level, created_at, assigned_staff_id, department_id, visible_to_all_departments, clinics(name)",
+        )
+        .eq("hospital_id", hospitalId!);
+      query = applyHospitalReferralListFilters(query, {
+        canTriageHospitalQueue,
+        departmentId: staffDepartmentId,
+      });
+      const { data, error } = await query.order("created_at", { ascending: false }).limit(100);
       if (error) throw error;
       return (data ?? []) as unknown as Row[];
     },
@@ -101,44 +133,87 @@ export default function HospitalDashboard() {
 
   useEffect(() => {
     if (!hospitalId) return;
+    const dashKey = referralKeys.hospitalDashboard(hospitalId, listScope);
+    const filter = `hospital_id=eq.${hospitalId}`;
+    const visibilityOpts = { canTriageHospitalQueue, departmentId: staffDepartmentId };
+
+    const onInsert = (payload: { new: Record<string, unknown> }) => {
+      const incoming = rowFromReferralRealtime(payload.new);
+      if (!incoming) return;
+      if (!referralRowVisibleToHospitalViewer(payload.new, visibilityOpts)) return;
+      queryClient.setQueryData<Row[]>(dashKey, (prev) => {
+        const list = prev ?? [];
+        if (list.some((r) => r.id === incoming.id)) return list;
+        return [incoming, ...list].slice(0, 100);
+      });
+      toast.success(
+        `New referral arrived: ${incoming.referral_number ?? "—"} — ${incoming.urgency_level} priority`,
+      );
+      debouncedRealtime();
+    };
+
+    const onUpdate = (payload: { new: Record<string, unknown> }) => {
+      const patch = rowFromReferralRealtime(payload.new);
+      if (!patch) return;
+      const visible = referralRowVisibleToHospitalViewer(payload.new, visibilityOpts);
+      queryClient.setQueryData<Row[]>(dashKey, (prev) => {
+        const list = prev ?? [];
+        const i = list.findIndex((r) => r.id === patch.id);
+        if (!visible) {
+          if (i === -1) return list;
+          return list.filter((r) => r.id !== patch.id);
+        }
+        if (i === -1) return [patch, ...list].slice(0, 100);
+        const merged: Row = {
+          ...list[i],
+          ...patch,
+          clinics: list[i].clinics ?? patch.clinics,
+        };
+        const next = [...list];
+        next[i] = merged;
+        return next;
+      });
+      debouncedRealtime();
+    };
+
     const ch = supabase
-      .channel("hosp-refs")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "referrals", filter: `hospital_id=eq.${hospitalId}` },
-        debouncedRealtime,
-      )
+      .channel(`hospital-staff-dashboard-${hospitalId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "referrals", filter }, onInsert)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "referrals", filter }, onUpdate)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "referrals", filter }, debouncedRealtime)
       .subscribe();
     return () => {
       cancelDebouncedRealtime();
       supabase.removeChannel(ch);
     };
-  }, [hospitalId, debouncedRealtime, cancelDebouncedRealtime]);
-
-  const scopedRows = useMemo(() => {
-    if (canTriageHospitalQueue) return rows;
-    const uid = profile?.id;
-    return rows.filter((r) => r.assigned_staff_id != null && r.assigned_staff_id === uid);
-  }, [rows, canTriageHospitalQueue, profile?.id]);
+  }, [
+    hospitalId,
+    listScope,
+    canTriageHospitalQueue,
+    staffDepartmentId,
+    queryClient,
+    debouncedRealtime,
+    cancelDebouncedRealtime,
+  ]);
 
   const c = useMemo(
     () => ({
-      new: scopedRows.filter((r) => r.status === "new").length,
-      high: scopedRows.filter((r) => ["high", "critical"].includes(r.urgency_level) && !["completed", "rejected"].includes(r.status)).length,
-      accepted: scopedRows.filter((r) => r.status === "accepted").length,
-      rejected: scopedRows.filter((r) => r.status === "rejected").length,
-      assigned: scopedRows.filter((r) => ["assigned", "treated"].includes(r.status)).length,
-      completed: scopedRows.filter((r) => r.status === "completed").length,
+      new: rows.filter((r) => r.status === "new").length,
+      high: rows.filter((r) => ["high", "critical"].includes(r.urgency_level) && !["completed", "rejected"].includes(r.status)).length,
+      accepted: rows.filter((r) => r.status === "accepted").length,
+      rejected: rows.filter((r) => r.status === "rejected").length,
+      assigned: rows.filter((r) => ["assigned", "treated"].includes(r.status)).length,
+      completed: rows.filter((r) => r.status === "completed").length,
     }),
-    [scopedRows],
+    [rows],
   );
 
   const priority = useMemo(
     () =>
-      scopedRows
+      rows
         .filter((r) => ["new", "under_review", "accepted", "assigned", "info_requested"].includes(r.status))
         .slice(0, 6),
-    [scopedRows],
+    [rows],
   );
 
   const showPriorityQueueLoading = !!hospitalId && referralsQueryPending;
