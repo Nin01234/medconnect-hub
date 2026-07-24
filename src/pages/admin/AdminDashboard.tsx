@@ -82,9 +82,8 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Users" value={c.users} icon={<Users className="h-5 w-5" />} accent="primary" />
-        <StatCard label="Clinics" value={c.clinics} icon={<Building2 className="h-5 w-5" />} accent="info" />
         <StatCard label="Hospitals" value={c.hospitals} icon={<Hospital className="h-5 w-5" />} accent="success" />
         <StatCard label="Referrals" value={c.referrals} icon={<FileText className="h-5 w-5" />} accent="gold" />
         <Link to="/admin/approvals" className="block">

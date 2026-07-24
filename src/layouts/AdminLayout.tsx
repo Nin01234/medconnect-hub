@@ -12,7 +12,6 @@ const links = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/users", label: "Users", icon: Users },
   { to: "/admin/approvals", label: "Pending Approvals", icon: UserCheck },
-  { to: "/admin/clinics", label: "Clinics", icon: Building2 },
   { to: "/admin/hospitals", label: "Hospitals", icon: Hospital },
   { to: "/admin/roles", label: "Roles", icon: ShieldCheck },
   { to: "/admin/audit", label: "Audit Logs", icon: ScrollText },

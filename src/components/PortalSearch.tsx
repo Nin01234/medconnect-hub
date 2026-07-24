@@ -416,9 +416,6 @@ export function PortalSearch({
                 <CommandItem value="pending approvals" onSelect={() => go("/admin/approvals")}>
                   <UserCheck className="mr-2 h-4 w-4" /> Pending approvals
                 </CommandItem>
-                <CommandItem value="clinics" onSelect={() => go("/admin/clinics")}>
-                  <Building2 className="mr-2 h-4 w-4" /> Clinics
-                </CommandItem>
                 <CommandItem value="hospitals" onSelect={() => go("/admin/hospitals")}>
                   <Hospital className="mr-2 h-4 w-4" /> Hospitals
                 </CommandItem>

@@ -340,7 +340,8 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     (ref?.department_id === profile?.department_id ||
       (ref as unknown as { source_department_id?: string | null })?.source_department_id === profile?.department_id);
   const canStaffAct = !isHospital && isClinicStaff && ref?.assigned_staff_id === profile?.id;
-  const canAct = isHospitalAdmin || isHospitalStaff || isDeptAdminForThisReferral || canStaffAct;
+  // Hospital admins can view/assign referrals, but clinical triage actions are restricted to hospital staff and department admins/staff
+  const canAct = isHospitalStaff || isDeptAdminForThisReferral || canStaffAct;
   const isCompleted = ref.status === "completed";
   const canOverrideCompletedLock = (isHospital && hasRole(roles, "hospital_admin", "admin")) || isDeptAdminForThisReferral;
   const canAccept = !["accepted", "rejected", "completed"].includes(ref.status);
@@ -568,14 +569,70 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
         </CardContent>
       </Card>
 
-      {/* Triage & actions */}
+      {/* Hospital Admin Department Routing & Assignment */}
+      {isHospitalAdmin && (!isCompleted || canOverrideCompletedLock) && (
+        <Card className="shadow-card no-print">
+          <CardContent className="p-6 space-y-4">
+            <h3 className="font-display text-lg font-semibold">Hospital Admin Routing &amp; Visibility</h3>
+            <p className="text-xs text-muted-foreground">
+              Route this referral to a specific hospital department or manage visibility across all departments.
+            </p>
+            <div className="max-w-md space-y-3">
+              <div>
+                <Label>Assign to department (Admin)</Label>
+                <div className="flex gap-2 mt-1">
+                  <Select value={departmentId} onValueChange={setDepartmentId}>
+                    <SelectTrigger><SelectValue placeholder="Choose department" /></SelectTrigger>
+                    <SelectContent>
+                      {departmentOptions.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="hero"
+                    disabled={!departmentId || busy}
+                    onClick={() => {
+                      const chosen = departmentOptions.find((d) => d.id === departmentId);
+                      void updateStatus("assigned", {
+                        department_id: departmentId,
+                        assigned_department: chosen?.name ?? null,
+                        assigned_doctor_id: null,
+                        visible_to_all_departments: false,
+                      });
+                    }}
+                  >
+                    Assign
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Button
+                  size="sm"
+                  variant={visibleAllDepartments ? "hero" : "outline"}
+                  disabled={busy}
+                  onClick={() =>
+                    void updateStatus(ref.status, {
+                      visible_to_all_departments: !visibleAllDepartments,
+                    })
+                  }
+                >
+                  {visibleAllDepartments ? "Visible to all departments" : "Make visible to all departments"}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Clinical Triage & Actions */}
       {canAct && (!isCompleted || canOverrideCompletedLock) && (
         <Card className="shadow-card no-print">
           <CardContent className="p-6 space-y-4">
             <h3 className="font-display text-lg font-semibold">{isHospital ? "Hospital Actions" : "Triage & Actions"}</h3>
             {isCompleted && canOverrideCompletedLock && (
               <p className="text-xs text-muted-foreground">
-                Completed referral lock is active for staff. You can still make final corrections as a hospital admin.
+                Completed referral lock is active for staff.
               </p>
             )}
             <div className="flex flex-wrap gap-2">
@@ -603,50 +660,6 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
                     </Select>
                     <Button variant="hero" disabled={!staffId || busy} onClick={() => void assignStaff()}>
                       Assign
-                    </Button>
-                  </div>
-                </div>
-              )}
-              {isHospitalAdmin && (
-                <div>
-                  <Label>Assign to department (Admin)</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Select value={departmentId} onValueChange={setDepartmentId}>
-                      <SelectTrigger><SelectValue placeholder="Choose department" /></SelectTrigger>
-                      <SelectContent>
-                        {departmentOptions.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="hero"
-                      disabled={!departmentId || busy}
-                      onClick={() => {
-                        const chosen = departmentOptions.find((d) => d.id === departmentId);
-                        void updateStatus("assigned", {
-                          department_id: departmentId,
-                          assigned_department: chosen?.name ?? null,
-                          assigned_doctor_id: null,
-                          visible_to_all_departments: false,
-                        });
-                      }}
-                    >
-                      Assign
-                    </Button>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant={visibleAllDepartments ? "hero" : "outline"}
-                      disabled={busy}
-                      onClick={() =>
-                        void updateStatus(ref.status, {
-                          visible_to_all_departments: !visibleAllDepartments,
-                        })
-                      }
-                    >
-                      {visibleAllDepartments ? "Visible to all departments" : "Make visible to all departments"}
                     </Button>
                   </div>
                 </div>
