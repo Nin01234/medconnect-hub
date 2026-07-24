@@ -1,17 +1,21 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { hasRole } from "@/context/authRoles";
-import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
-import { applyHospitalReferralListFilters, hospitalReferralListScopeKey } from "@/lib/hospitalReferralListFilters";
+import {
+  applyHospitalReferralListFilters,
+  hospitalReferralListScopeKey,
+  referralRowVisibleToHospitalViewer,
+} from "@/lib/hospitalReferralListFilters";
 import { referralKeys } from "@/lib/referralQueryKeys";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
 import { sanitizeText } from "@/lib/sanitize";
+import { toast } from "sonner";
 
 interface Row {
   id: string;
@@ -24,19 +28,51 @@ interface Row {
   clinics: { name: string } | null;
 }
 
+function inboxRowFromRealtime(record: Record<string, unknown>): Row | null {
+  const id = record.id != null ? String(record.id) : null;
+  if (!id) return null;
+  return {
+    id,
+    referral_number: record.referral_number != null ? String(record.referral_number) : null,
+    patient_id: record.patient_id != null ? String(record.patient_id) : null,
+    patient_name: typeof record.patient_name === "string" ? record.patient_name : "",
+    status: typeof record.status === "string" ? record.status : "",
+    urgency_level: typeof record.urgency_level === "string" ? record.urgency_level : "medium",
+    created_at: record.created_at != null ? String(record.created_at) : new Date().toISOString(),
+    clinics: null,
+  };
+}
+
 export default function HospitalInbox() {
   const { profile, roles } = useAuth();
+  const isDoctorPortal =
+    hasRole(roles, "doctor") && !hasRole(roles, "hospital_admin", "hospital_staff", "admin");
   const queryClient = useQueryClient();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
   const [urgency, setUrgency] = useState("all");
+  const [agentDebug, setAgentDebug] = useState<Record<string, unknown> | null>(null);
 
   const hospitalId = profile?.hospital_id ?? null;
   const canTriageHospitalQueue = hasRole(roles, "admin") || hasRole(roles, "hospital_admin");
   const staffDepartmentId = profile?.department_id ?? null;
   const listScope = hospitalReferralListScopeKey(canTriageHospitalQueue, staffDepartmentId);
 
-  const { data: rows = [] } = useQuery({
+  const debugEnabled = useMemo(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return p.get("debug") === "11eafa";
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const {
+    data: rows = [],
+    error: referralsError,
+    isFetching,
+    isPending,
+  } = useQuery({
     queryKey: hospitalId ? referralKeys.hospitalInbox(hospitalId, listScope) : ["referrals", "hospital", "inactive", "inbox"],
     enabled: !!hospitalId,
     queryFn: async () => {
@@ -49,30 +85,157 @@ export default function HospitalInbox() {
         departmentId: staffDepartmentId,
       });
       const { data, error } = await query.order("created_at", { ascending: false }).limit(400);
-      if (error) throw error;
+      if (error) {
+        // #region agent log (debug-mode)
+        fetch("http://127.0.0.1:7930/ingest/ffa8cccd-d5ba-44b3-8be7-88ecdf51e175", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "11eafa" },
+          body: JSON.stringify({
+            sessionId: "11eafa",
+            runId: "pre-fix",
+            hypothesisId: "H1",
+            location: "src/pages/hospital/HospitalInbox.tsx:queryFn",
+            message: "HospitalInbox referrals query error",
+            data: {
+              hasHospitalId: !!hospitalId,
+              canTriageHospitalQueue,
+              hasStaffDepartmentId: !!staffDepartmentId,
+              listScope,
+              supabaseErrorCode: (error as { code?: unknown })?.code ?? null,
+              supabaseErrorMessage: (error as { message?: unknown })?.message ?? null,
+            },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion agent log (debug-mode)
+        throw error;
+      }
+      // #region agent log (debug-mode)
+      fetch("http://127.0.0.1:7930/ingest/ffa8cccd-d5ba-44b3-8be7-88ecdf51e175", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "11eafa" },
+        body: JSON.stringify({
+          sessionId: "11eafa",
+          runId: "pre-fix",
+          hypothesisId: "H2",
+          location: "src/pages/hospital/HospitalInbox.tsx:queryFn",
+          message: "HospitalInbox referrals query ok",
+          data: {
+            hasHospitalId: !!hospitalId,
+            canTriageHospitalQueue,
+            hasStaffDepartmentId: !!staffDepartmentId,
+            listScope,
+            rowCount: Array.isArray(data) ? data.length : null,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion agent log (debug-mode)
       return (data ?? []) as unknown as Row[];
+    },
+    onSuccess: (data) => {
+      if (!debugEnabled) return;
+      setAgentDebug({
+        page: "HospitalInbox",
+        hasHospitalId: !!hospitalId,
+        canTriageHospitalQueue,
+        hasStaffDepartmentId: !!staffDepartmentId,
+        listScope,
+        rowCount: Array.isArray(data) ? data.length : null,
+      });
+    },
+    onError: (err) => {
+      if (!debugEnabled) return;
+      const e = err as { code?: unknown; message?: unknown };
+      setAgentDebug({
+        page: "HospitalInbox",
+        hasHospitalId: !!hospitalId,
+        canTriageHospitalQueue,
+        hasStaffDepartmentId: !!staffDepartmentId,
+        listScope,
+        supabaseErrorCode: e?.code ?? null,
+        supabaseErrorMessage: e?.message ?? null,
+      });
     },
   });
 
-  const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
-    if (hospitalId) void queryClient.invalidateQueries({ queryKey: referralKeys.hospitalRoot(hospitalId) });
-  }, 400);
-
   useEffect(() => {
     if (!hospitalId) return;
+    // #region agent log (debug-mode)
+    fetch("http://127.0.0.1:7930/ingest/ffa8cccd-d5ba-44b3-8be7-88ecdf51e175", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "11eafa" },
+      body: JSON.stringify({
+        sessionId: "11eafa",
+        runId: "pre-fix",
+        hypothesisId: "H0",
+        location: "src/pages/hospital/HospitalInbox.tsx:useEffect",
+        message: "HospitalInbox effect mounted",
+        data: {
+          hasHospitalId: !!hospitalId,
+          canTriageHospitalQueue,
+          hasStaffDepartmentId: !!staffDepartmentId,
+          listScope,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion agent log (debug-mode)
+
+    const inboxKey = referralKeys.hospitalInbox(hospitalId, listScope);
+    const filter = `hospital_id=eq.${hospitalId}`;
+    const visibilityOpts = { canTriageHospitalQueue, departmentId: staffDepartmentId };
+    const channelName = canTriageHospitalQueue ? `hospital-admin-${hospitalId}-inbox` : `hospital-staff-${hospitalId}-inbox`;
+
+    const onInsert = (payload: { new: Record<string, unknown> }) => {
+      const incoming = inboxRowFromRealtime(payload.new);
+      if (!incoming) return;
+      if (!referralRowVisibleToHospitalViewer(payload.new, visibilityOpts)) return;
+      queryClient.setQueryData<Row[]>(inboxKey, (prev) => {
+        const list = prev ?? [];
+        if (list.some((r) => r.id === incoming.id)) return list;
+        return [incoming, ...list].slice(0, 400);
+      });
+      toast.success(`New referral: ${incoming.referral_number ?? "—"}`);
+    };
+
+    const onUpdate = (payload: { new: Record<string, unknown> }) => {
+      const patch = inboxRowFromRealtime(payload.new);
+      if (!patch) return;
+      const visible = referralRowVisibleToHospitalViewer(payload.new, visibilityOpts);
+      queryClient.setQueryData<Row[]>(inboxKey, (prev) => {
+        const list = prev ?? [];
+        const i = list.findIndex((r) => r.id === patch.id);
+        if (!visible) {
+          if (i === -1) return list;
+          return list.filter((r) => r.id !== patch.id);
+        }
+        if (i === -1) return [patch, ...list].slice(0, 400);
+        const merged: Row = { ...list[i], ...patch, clinics: list[i].clinics ?? patch.clinics };
+        const next = [...list];
+        next[i] = merged;
+        return next;
+      });
+    };
+
+    const onDelete = (payload: { old: Record<string, unknown> }) => {
+      const rid = payload.old?.id != null ? String(payload.old.id) : null;
+      if (!rid) return;
+      queryClient.setQueryData<Row[]>(inboxKey, (prev) => (prev ?? []).filter((r) => r.id !== rid));
+    };
+
     const ch = supabase
-      .channel(`hospital-inbox-${hospitalId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "referrals", filter: `hospital_id=eq.${hospitalId}` },
-        debouncedRealtime,
-      )
+      .channel(channelName)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "referrals", filter }, onInsert)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "referrals", filter }, onUpdate)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "referrals", filter }, onDelete)
       .subscribe();
     return () => {
-      cancelDebouncedRealtime();
       supabase.removeChannel(ch);
     };
-  }, [hospitalId, debouncedRealtime, cancelDebouncedRealtime]);
+  }, [hospitalId, listScope, canTriageHospitalQueue, staffDepartmentId, queryClient]);
+
+  if (isDoctorPortal) return <Navigate to="/hospital/doctor" replace />;
 
   const normalizedQuery = sanitizeText(q, 200).toLowerCase();
   const filtered = rows.filter(
@@ -87,6 +250,21 @@ export default function HospitalInbox() {
 
   return (
     <div className="space-y-5">
+      {debugEnabled && (
+        <pre
+          data-agent-debug="11eafa"
+          className="rounded-lg border bg-secondary/20 p-3 text-xs overflow-auto whitespace-pre-wrap"
+        >
+          {JSON.stringify(
+            {
+              agentDebug,
+              queryState: { isPending, isFetching, hasError: !!referralsError, rows: rows.length },
+            },
+            null,
+            2,
+          )}
+        </pre>
+      )}
       <div>
         <h1 className="font-display text-3xl font-bold">Referral Inbox</h1>
         <p className="text-muted-foreground">

@@ -25,6 +25,7 @@ interface Profile {
   hospital_id: string | null;
   clinics?: { name: string; region: string | null; city: string | null } | null;
   hospitals?: { name: string; region: string | null; city: string | null } | null;
+  departments?: { name: string } | null;
   user_roles?: { role: AppRole }[];
 }
 
@@ -75,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         supabase
           .from("profiles")
           .select(
-            "id, unique_id, full_name, email, phone, status, role, staff_id, department_id, clinic_id, hospital_id, clinics(name,region,city), hospitals(name,region,city)",
+            "id, unique_id, full_name, email, phone, status, role, staff_id, department_id, clinic_id, hospital_id, clinics(name,region,city), hospitals(name,region,city), departments(name)",
           )
           .eq("id", uid)
           .maybeSingle(),

@@ -13,4 +13,6 @@ export const referralKeys = {
   clinicRoot: (clinicId: string) => [...referralKeys.all, "clinic", clinicId] as const,
   clinicDashboard: (clinicId: string) => [...referralKeys.clinicRoot(clinicId), "dashboard"] as const,
   clinicMyReferrals: (clinicId: string) => [...referralKeys.clinicRoot(clinicId), "my-referrals"] as const,
+  /** Referrals assigned to a doctor row (`doctors.id`), not auth user id. */
+  doctorDashboard: (doctorRowId: string) => [...referralKeys.all, "doctor", doctorRowId, "dashboard"] as const,
 };

@@ -9,7 +9,6 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { referralKeys } from "@/lib/referralQueryKeys";
-import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { toast } from "sonner";
 import { safeClientError } from "@/lib/safeError";
 import { sanitizeText } from "@/lib/sanitize";
@@ -34,6 +33,45 @@ interface Row {
 
 const assignedWorkflowStatuses = ["accepted", "assigned", "rejected", "treated", "completed", "info_requested"] as const;
 
+function isAssignedWorkflowStatus(value: string): boolean {
+  return assignedWorkflowStatuses.includes(value as (typeof assignedWorkflowStatuses)[number]);
+}
+
+/** Mirrors the post-fetch shaping in this page’s query so realtime stays consistent. */
+function shapeAssignedCasesRows(rows: Omit<Row, "departments">[]): Row[] {
+  const mapped = rows.map((r) => ({ ...r, departments: null as Row["departments"] }));
+  const filtered = mapped.filter(
+    (r) => !!(r.department_id || r.assigned_department || isAssignedWorkflowStatus(r.status)),
+  );
+  return filtered.length > 0 ? filtered : mapped;
+}
+
+function stripDepartments(r: Row): Omit<Row, "departments"> {
+  const { departments: _d, ...rest } = r;
+  return rest;
+}
+
+function assignedCaseRowFromRealtime(record: Record<string, unknown>): Omit<Row, "departments"> | null {
+  const id = record.id != null ? String(record.id) : null;
+  if (!id) return null;
+  return {
+    id,
+    referral_number: record.referral_number != null ? String(record.referral_number) : null,
+    patient_id: record.patient_id != null ? String(record.patient_id) : null,
+    patient_name: typeof record.patient_name === "string" ? record.patient_name : "",
+    status: typeof record.status === "string" ? record.status : "",
+    created_at: record.created_at != null ? String(record.created_at) : new Date().toISOString(),
+    updated_at: record.updated_at != null ? String(record.updated_at) : new Date().toISOString(),
+    department_id: record.department_id != null ? String(record.department_id) : null,
+    assigned_department: record.assigned_department != null ? String(record.assigned_department) : null,
+    assigned_staff_id: record.assigned_staff_id != null ? String(record.assigned_staff_id) : null,
+    urgency_level: typeof record.urgency_level === "string" ? record.urgency_level : "medium",
+    rejection_reason: record.rejection_reason != null ? String(record.rejection_reason) : null,
+    hospital_feedback: record.hospital_feedback != null ? String(record.hospital_feedback) : null,
+    clinics: null,
+  };
+}
+
 const statusCardTone: Record<string, string> = {
   accepted: "text-emerald-600",
   assigned: "text-indigo-600",
@@ -57,8 +95,6 @@ export default function AssignedCases() {
     queryKey: hospitalId ? referralKeys.hospitalAssigned(hospitalId) : ["referrals", "hospital", "inactive", "assigned"],
     enabled: !!hospitalId,
     queryFn: async () => {
-      const isAssignedWorkflowStatus = (value: string) =>
-        assignedWorkflowStatuses.includes(value as (typeof assignedWorkflowStatuses)[number]);
       const query = supabase
         .from("referrals")
         .select(
@@ -68,36 +104,83 @@ export default function AssignedCases() {
         .order("created_at", { ascending: false });
       const { data, error } = await query;
       if (error) throw error;
-      const rows = ((data ?? []) as unknown as Omit<Row, "departments">[]).map((r) => ({
-        ...r,
-        departments: null,
-      }));
-      const filteredRows = rows.filter((r) => !!r.department_id || !!r.assigned_department || isAssignedWorkflowStatus(r.status));
-      // If workflow flags are inconsistent in backend data, prefer showing hospital cases
-      // instead of an empty assigned page.
-      return filteredRows.length > 0 ? filteredRows : rows;
+      const raw = (data ?? []) as unknown as Omit<Row, "departments">[];
+      return shapeAssignedCasesRows(raw);
     },
   });
 
-  const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
-    if (hospitalId) void queryClient.invalidateQueries({ queryKey: referralKeys.hospitalRoot(hospitalId) });
-  }, 400);
-
   useEffect(() => {
     if (!hospitalId) return;
+    const assignedKey = referralKeys.hospitalAssigned(hospitalId);
+    const filter = `hospital_id=eq.${hospitalId}`;
+
+    const onInsert = (payload: { new: Record<string, unknown> }) => {
+      const incoming = assignedCaseRowFromRealtime(payload.new);
+      if (!incoming) return;
+      queryClient.setQueryData<Row[]>(assignedKey, (prev) => {
+        const list = prev ?? [];
+        const rest = list.filter((r) => r.id !== incoming.id);
+        const mergedRaw: Omit<Row, "departments">[] = [
+          incoming,
+          ...rest.map((r) => ({
+            id: r.id,
+            referral_number: r.referral_number,
+            patient_id: r.patient_id,
+            patient_name: r.patient_name,
+            status: r.status,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+            department_id: r.department_id,
+            assigned_department: r.assigned_department,
+            assigned_staff_id: r.assigned_staff_id,
+            urgency_level: r.urgency_level,
+            rejection_reason: r.rejection_reason,
+            hospital_feedback: r.hospital_feedback,
+            clinics: r.clinics,
+          })),
+        ];
+        return shapeAssignedCasesRows(mergedRaw);
+      });
+    };
+
+    const onUpdate = (payload: { new: Record<string, unknown> }) => {
+      const patch = assignedCaseRowFromRealtime(payload.new);
+      if (!patch) return;
+      queryClient.setQueryData<Row[]>(assignedKey, (prev) => {
+        const list = prev ?? [];
+        const i = list.findIndex((r) => r.id === patch.id);
+        const rawRows: Omit<Row, "departments">[] =
+          i === -1
+            ? [patch, ...list.map(stripDepartments)]
+            : list.map((r, idx) =>
+                idx === i
+                  ? {
+                      ...stripDepartments(r),
+                      ...patch,
+                      clinics: r.clinics ?? patch.clinics,
+                    }
+                  : stripDepartments(r),
+              );
+        return shapeAssignedCasesRows(rawRows);
+      });
+    };
+
+    const onDelete = (payload: { old: Record<string, unknown> }) => {
+      const rid = payload.old?.id != null ? String(payload.old.id) : null;
+      if (!rid) return;
+      queryClient.setQueryData<Row[]>(assignedKey, (prev) => shapeAssignedCasesRows((prev ?? []).filter((r) => r.id !== rid).map(stripDepartments)));
+    };
+
     const ch = supabase
-      .channel("assigned-cases")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "referrals", filter: `hospital_id=eq.${hospitalId}` },
-        debouncedRealtime,
-      )
+      .channel(`hospital-assigned-${hospitalId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "referrals", filter }, onInsert)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "referrals", filter }, onUpdate)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "referrals", filter }, onDelete)
       .subscribe();
     return () => {
-      cancelDebouncedRealtime();
       supabase.removeChannel(ch);
     };
-  }, [hospitalId, debouncedRealtime, cancelDebouncedRealtime]);
+  }, [hospitalId, queryClient]);
 
   useEffect(() => {
     const loadCompletionActors = async () => {

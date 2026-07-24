@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { referralKeys } from "@/lib/referralQueryKeys";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
@@ -10,6 +9,7 @@ import { Link } from "react-router-dom";
 import { FilePlus2, Send, Clock, CheckCircle2, XCircle, Award, Building2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 interface Row {
   id: string;
@@ -19,6 +19,20 @@ interface Row {
   urgency_level: string;
   created_at: string;
   hospital_feedback: string | null;
+}
+
+function clinicDashRowFromRealtime(record: Record<string, unknown>): Row | null {
+  const id = record.id != null ? String(record.id) : null;
+  if (!id) return null;
+  return {
+    id,
+    referral_number: record.referral_number != null ? String(record.referral_number) : null,
+    patient_name: typeof record.patient_name === "string" ? record.patient_name : "",
+    status: typeof record.status === "string" ? record.status : "",
+    urgency_level: typeof record.urgency_level === "string" ? record.urgency_level : "medium",
+    created_at: record.created_at != null ? String(record.created_at) : new Date().toISOString(),
+    hospital_feedback: record.hospital_feedback != null ? String(record.hospital_feedback) : null,
+  };
 }
 
 function AnimatedCount({ value }: { value: number }) {
@@ -51,13 +65,26 @@ export default function ClinicDashboard() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const clinicId = profile?.clinic_id ?? null;
-  const fallbackClinicName = profile?.clinics?.name?.trim() ?? "";
+  const departmentId = profile?.department_id ?? null;
+  // Department admins have no clinic_id — they use department_id instead
+  const isDeptLinked = !clinicId && !!departmentId;
+  const scopeId = isDeptLinked ? departmentId : clinicId;
+  const fallbackClinicName = profile?.clinics?.name?.trim() ?? profile?.departments?.name?.trim() ?? "";
 
-  const { data: clinicName = fallbackClinicName } = useQuery({
-    queryKey: clinicId ? ["clinic", "name", clinicId] : ["clinic", "name", "inactive"],
-    enabled: !!clinicId,
+  const { data: displayName = fallbackClinicName } = useQuery({
+    queryKey: scopeId ? ["dept-or-clinic", "name", scopeId] : ["dept-or-clinic", "name", "inactive"],
+    enabled: !!scopeId,
     initialData: fallbackClinicName,
     queryFn: async () => {
+      if (isDeptLinked) {
+        const { data, error } = await supabase
+          .from("departments")
+          .select("name")
+          .eq("id", departmentId!)
+          .maybeSingle();
+        if (error) throw error;
+        return data?.name?.trim() ?? fallbackClinicName;
+      }
       const { data, error } = await supabase
         .from("clinics")
         .select("name")
@@ -69,13 +96,21 @@ export default function ClinicDashboard() {
   });
 
   const { data: rows = [] } = useQuery({
-    queryKey: clinicId ? referralKeys.clinicDashboard(clinicId) : ["referrals", "clinic", "inactive", "dashboard"],
-    enabled: !!clinicId,
+    queryKey: scopeId
+      ? referralKeys.clinicDashboard(scopeId)
+      : ["referrals", "clinic", "inactive", "dashboard"],
+    enabled: !!scopeId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("referrals")
-        .select("id, referral_number, patient_name, status, urgency_level, created_at, hospital_feedback")
-        .eq("clinic_id", clinicId!)
+        .select("id, referral_number, patient_name, status, urgency_level, created_at, hospital_feedback");
+      if (isDeptLinked) {
+        // Dept users see referrals they sent (source_department_id) OR assigned to them (department_id)
+        query = query.or(`source_department_id.eq.${departmentId},department_id.eq.${departmentId}`);
+      } else {
+        query = query.eq("clinic_id", clinicId!);
+      }
+      const { data, error } = await query
         .order("created_at", { ascending: false })
         .limit(50);
       if (error) throw error;
@@ -119,25 +154,31 @@ export default function ClinicDashboard() {
     { label: "Completed", value: counts.completed, icon: Award, tone: "from-indigo-500/20 to-indigo-500/5 border-indigo-500/30", iconTone: "text-indigo-600 dark:text-indigo-300 bg-indigo-500/15" },
   ] as const;
 
-  const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
-    if (clinicId) void queryClient.invalidateQueries({ queryKey: referralKeys.clinicRoot(clinicId) });
-  }, 400);
-
   useEffect(() => {
-    if (!clinicId) return;
+    if (!scopeId) return;
+    const dashKey = referralKeys.clinicDashboard(scopeId);
+    const filter = isDeptLinked
+      ? `source_department_id=eq.${departmentId}`
+      : `clinic_id=eq.${clinicId}`;
+
+    const onUpdate = (payload: { new: Record<string, unknown> }) => {
+      const patch = clinicDashRowFromRealtime(payload.new);
+      if (!patch) return;
+      queryClient.setQueryData<Row[]>(dashKey, (prev) => {
+        const list = prev ?? [];
+        return list.map((r) => (r.id === patch.id ? patch : r));
+      });
+      toast.success(`Referral ${patch.referral_number ?? "—"} updated → ${patch.status}`);
+    };
+
     const ch = supabase
-      .channel("clinic-referrals")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "referrals", filter: `clinic_id=eq.${clinicId}` },
-        debouncedRealtime,
-      )
+      .channel(`clinic-dashboard-${scopeId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "referrals", filter }, onUpdate)
       .subscribe();
     return () => {
-      cancelDebouncedRealtime();
       supabase.removeChannel(ch);
     };
-  }, [clinicId, debouncedRealtime, cancelDebouncedRealtime]);
+  }, [scopeId, isDeptLinked, departmentId, clinicId, queryClient]);
 
   return (
     <div className="space-y-6">
@@ -152,7 +193,7 @@ export default function ClinicDashboard() {
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Building2 className="h-4 w-4 text-primary" />
               <p className="text-sm text-muted-foreground">Facility:</p>
-              <p className="text-lg font-extrabold tracking-tight text-foreground">{clinicName || "Clinic name not set"}</p>
+              <p className="text-lg font-extrabold tracking-tight text-foreground">{displayName || (isDeptLinked ? "Department name not set" : "Clinic name not set")}</p>
             </div>
             <p className="text-muted-foreground mt-2 min-h-6 transition-all duration-300">
               {liveHighlights[highlightIndex]}

@@ -21,13 +21,13 @@ const usernameSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .min(3)
+  .min(3, "Username must contain at least 3 characters")
   .max(LIMITS.username)
   .regex(/^[a-z0-9][a-z0-9._-]{1,28}[a-z0-9]$/, "Username can only use lowercase letters, numbers, dot, dash, and underscore");
 
 export const authSignInSchema = z.object({
-  identifier: z.string().trim().toLowerCase().min(3).max(LIMITS.email),
-  password: z.string().min(LIMITS.passwordMin).max(LIMITS.passwordMax),
+  identifier: z.string().trim().toLowerCase().min(3, "Username or email must contain at least 3 characters").max(LIMITS.email),
+  password: z.string().min(LIMITS.passwordMin, `Password must contain at least ${LIMITS.passwordMin} characters`).max(LIMITS.passwordMax),
 }).superRefine((data, ctx) => {
   const isEmail = data.identifier.includes("@");
   if (isEmail) {
@@ -71,7 +71,7 @@ export const createReferralSchema = z.object({
   vitals_spo2: z.string().trim().max(50).optional().or(z.literal("")),
   urgency_level: urgencyEnum,
   referral_reason: z.string().trim().min(1).max(LIMITS.longText),
-  hospital_id: z.string().uuid(),
+  department_id: z.string().uuid(),
   notes: z.string().trim().max(LIMITS.longText).optional().or(z.literal("")),
 });
 
@@ -129,19 +129,18 @@ export const adminCreateUserSchema = z
     const needsOrg = data.role === "clinic_user" || data.role === "clinic_admin" || data.role === "clinic_staff" || data.role === "hospital_admin" || data.role === "hospital_staff";
     if (!needsOrg) return;
     if (data.org_mode === "existing") {
-      if ((data.role === "clinic_user" || data.role === "clinic_admin" || data.role === "clinic_staff") && data.clinic_id === "") {
+      // Only require clinic_id if there is no hospital_id — department staff/admins use hospital_id+department_id instead
+      if ((data.role === "clinic_user" || data.role === "clinic_admin" || data.role === "clinic_staff") && !data.hospital_id && data.clinic_id === "") {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Select a clinic", path: ["clinic_id"] });
       }
-      if ((data.role === "hospital_admin" || data.role === "hospital_staff") && data.hospital_id === "") {
+      if ((data.role === "hospital_admin" || data.role === "hospital_staff" || data.role === "clinic_admin" || data.role === "clinic_staff") && data.hospital_id === "" && !data.clinic_id) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Select a hospital", path: ["hospital_id"] });
       }
-      if (data.role === "hospital_staff" && (!data.department_id || data.department_id === "")) {
+      // Require department only when hospital_id is provided (department-linked roles)
+      if ((data.role === "hospital_staff" || data.role === "clinic_admin" || data.role === "clinic_staff") && data.hospital_id && (!data.department_id || data.department_id === "")) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Select a department", path: ["department_id"] });
       }
-      if (data.role === "hospital_staff" && (!data.staff_id || data.staff_id.trim() === "")) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Staff ID is required", path: ["staff_id"] });
-      }
-      if (data.role === "clinic_staff" && (!data.staff_id || data.staff_id.trim() === "")) {
+      if ((data.role === "hospital_staff" || data.role === "clinic_admin" || data.role === "clinic_staff") && data.hospital_id && (!data.staff_id || data.staff_id.trim() === "")) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Staff ID is required", path: ["staff_id"] });
       }
     }
@@ -158,7 +157,7 @@ export const adminCreateUserSchema = z
 
 export const adminEditUserSchema = z
   .object({
-    full_name: z.string().trim().min(1).max(LIMITS.name),
+    full_name: z.string().trim().min(1, "Full name is required").max(LIMITS.name),
     email: z.union([z.literal(""), z.string().trim().toLowerCase().email().max(LIMITS.email)]),
     username: usernameSchema,
     phone: z.string().trim().max(LIMITS.phone).optional().or(z.literal("")),
@@ -170,19 +169,18 @@ export const adminEditUserSchema = z
     staff_id: z.string().trim().max(50).optional().or(z.literal("")),
   })
   .superRefine((data, ctx) => {
-    if ((data.role === "clinic_user" || data.role === "clinic_admin" || data.role === "clinic_staff") && data.clinic_id === "") {
+    // Only require clinic_id if there is no hospital_id — department staff/admins use hospital_id+department_id instead
+    if ((data.role === "clinic_user" || data.role === "clinic_admin" || data.role === "clinic_staff") && !data.hospital_id && data.clinic_id === "") {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Select a clinic", path: ["clinic_id"] });
     }
-    if ((data.role === "hospital_admin" || data.role === "hospital_staff") && data.hospital_id === "") {
+    if ((data.role === "hospital_admin" || data.role === "hospital_staff" || data.role === "clinic_admin" || data.role === "clinic_staff") && data.hospital_id === "" && !data.clinic_id) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Select a hospital", path: ["hospital_id"] });
     }
-    if (data.role === "hospital_staff" && (!data.department_id || data.department_id === "")) {
+    // Require department only when hospital_id is provided (department-linked roles)
+    if ((data.role === "hospital_staff" || data.role === "clinic_admin" || data.role === "clinic_staff") && data.hospital_id && (!data.department_id || data.department_id === "")) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Select a department", path: ["department_id"] });
     }
-    if (data.role === "hospital_staff" && (!data.staff_id || data.staff_id.trim() === "")) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Staff ID is required", path: ["staff_id"] });
-    }
-    if (data.role === "clinic_staff" && (!data.staff_id || data.staff_id.trim() === "")) {
+    if ((data.role === "hospital_staff" || data.role === "clinic_admin" || data.role === "clinic_staff") && data.hospital_id && (!data.staff_id || data.staff_id.trim() === "")) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Staff ID is required", path: ["staff_id"] });
     }
   });

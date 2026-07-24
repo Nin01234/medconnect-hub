@@ -3,12 +3,11 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { hasRole } from "@/context/authRoles";
-import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
-import { MessagePanel } from "@/components/MessagePanel";
+import { MessagePanel, type ReferralChatMessage } from "@/components/MessagePanel";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -29,15 +28,63 @@ interface Referral {
   clinics: { name: string; unique_id: string | null; city: string | null; contact: string | null; region: string | null } | null;
   hospitals: { name: string; unique_id: string | null; city: string | null } | null;
   departments: { id: string; name: string } | null;
+  source_department: { id: string; name: string } | null;
 }
 interface Att { id: string; file_path: string; file_name: string; mime_type: string | null; }
-interface Hist { id: string; from_status: string | null; to_status: string; created_at: string; note: string | null; changed_by?: string | null; }
+interface Hist {
+  id: string;
+  from_status: string | null;
+  to_status: string;
+  created_at: string;
+  note: string | null;
+  changed_by?: string | null;
+}
+
+function referralMessageFromRealtime(record: Record<string, unknown>): ReferralChatMessage | null {
+  const mid = record.id != null ? String(record.id) : null;
+  const body = record.message;
+  const created = record.created_at != null ? String(record.created_at) : null;
+  if (!mid || typeof body !== "string" || !created) return null;
+  return {
+    id: mid,
+    sender_id: record.sender_id != null ? String(record.sender_id) : null,
+    message: body,
+    created_at: created,
+  };
+}
+
+function historyRowFromRealtime(record: Record<string, unknown>): Hist | null {
+  const hid = record.id != null ? String(record.id) : null;
+  if (!hid) return null;
+  return {
+    id: hid,
+    from_status: record.from_status != null ? String(record.from_status) : null,
+    to_status: typeof record.to_status === "string" ? record.to_status : "",
+    created_at: record.created_at != null ? String(record.created_at) : new Date().toISOString(),
+    note: record.note != null ? String(record.note) : null,
+    changed_by: record.changed_by != null ? String(record.changed_by) : null,
+  };
+}
+
+function attachmentFromRealtime(record: Record<string, unknown>): Att | null {
+  const aid = record.id != null ? String(record.id) : null;
+  if (!aid) return null;
+  const fp = record.file_path;
+  const fn = record.file_name;
+  if (typeof fp !== "string" || typeof fn !== "string") return null;
+  return {
+    id: aid,
+    file_path: fp,
+    file_name: fn,
+    mime_type: record.mime_type != null ? String(record.mime_type) : null,
+  };
+}
 interface DepartmentOption { id: string; name: string }
 interface DoctorOption { id: string; full_name: string; specialty: string | null; }
 
 /** Narrow projection vs select('*') — smaller payload from PostgREST. */
 const REFERRAL_DETAIL_SELECT =
-  "id, unique_id, referral_number, patient_id, patient_name, patient_age, patient_gender, patient_phone, diagnosis, symptoms, urgency_level, vitals_bp, vitals_hr, vitals_temp, vitals_rr, vitals_spo2, referral_reason, notes, status, rejection_reason, hospital_feedback, clinic_id, hospital_id, assigned_department, department_id, assigned_staff_id, assigned_doctor_id, staff_assignment_locked, visible_to_all_departments, created_at, updated_at, created_by, clinics(name,unique_id,city,contact,region), hospitals(name,unique_id,city), departments(id,name)";
+  "id, unique_id, referral_number, patient_id, patient_name, patient_age, patient_gender, patient_phone, diagnosis, symptoms, urgency_level, vitals_bp, vitals_hr, vitals_temp, vitals_rr, vitals_spo2, referral_reason, notes, status, rejection_reason, hospital_feedback, clinic_id, hospital_id, assigned_department, department_id, assigned_staff_id, assigned_doctor_id, staff_assignment_locked, visible_to_all_departments, created_at, updated_at, created_by, clinics(name,unique_id,city,contact,region), hospitals(name,unique_id,city), departments!department_id(id,name), source_department:departments!source_department_id(id,name)";
 
 export default function ReferralDetail({ portal }: { portal: "clinic" | "hospital" }) {
   const { id } = useParams();
@@ -57,6 +104,10 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   const [departmentOptions, setDepartmentOptions] = useState<DepartmentOption[]>([]);
   const [visibleAllDepartments, setVisibleAllDepartments] = useState(false);
   const [completedBy, setCompletedBy] = useState<{ accountId: string | null; userId: string; name: string | null } | null>(null);
+  const [messages, setMessages] = useState<ReferralChatMessage[]>([]);
+  const [staffOptions, setStaffOptions] = useState<{ id: string; full_name: string | null; staff_id: string | null }[]>([]);
+  const [staffId, setStaffId] = useState("");
+  const [assignedStaffName, setAssignedStaffName] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -68,12 +119,14 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     if (error) {
       toast.error(safeClientError(error));
       setRef(null);
+      setMessages([]);
       return;
     }
     if (!data) {
       // Most common causes: not found, or blocked by RLS (not authorized for this referral).
       toast.error("Referral not found or you don’t have access.");
       setRef(null);
+      setMessages([]);
       nav(-1);
       return;
     }
@@ -81,7 +134,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     setVisibleAllDepartments(Boolean((data as { visible_to_all_departments?: boolean }).visible_to_all_departments));
     const hospitalId = (data as { hospital_id?: string | null }).hospital_id;
 
-    const [attRes, histRes, depRes, docRes] = await Promise.all([
+    const [attRes, histRes, msgRes, depRes, docRes] = await Promise.all([
       supabase
         .from("referral_attachments")
         .select("id, file_path, file_name, mime_type, created_at, size_bytes, uploaded_by")
@@ -91,6 +144,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
         .select("id, from_status, to_status, created_at, note, changed_by, referral_id")
         .eq("referral_id", id)
         .order("created_at"),
+      supabase.from("referral_messages").select("id, sender_id, message, created_at").eq("referral_id", id).order("created_at"),
       hospitalId
         ? supabase
             .from("departments")
@@ -115,9 +169,13 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     if (histRes.error) {
       toast.error(`Failed to load timeline: ${safeClientError(histRes.error)}`);
     }
+    if (msgRes.error) {
+      toast.error(`Failed to load messages: ${safeClientError(msgRes.error)}`);
+    }
     setAtts((attRes.data ?? []) as Att[]);
     const historyRows = (histRes.data ?? []) as Hist[];
     setHist(historyRows);
+    setMessages((msgRes.data ?? []) as ReferralChatMessage[]);
 
     if (hospitalId) {
       setDepartmentOptions((depRes.data ?? []) as DepartmentOption[]);
@@ -125,6 +183,60 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     } else {
       setDepartmentOptions([]);
       setDoctorOptions([]);
+    }
+
+    // For dept-linked users (clinic_admin / clinic_staff) the staff to assign
+    // are from THEIR OWN department, not referral.department_id which is the
+    // hospital's receiving dept. Use profile.department_id when available.
+    const callerDeptId = profile?.department_id ?? null;
+    const isClinicAdminCaller = hasRole(roles, "clinic_admin");
+    // Use caller's dept for dept-linked admin; fall back to referral's dept for hospital portal
+    const staffDeptId = (isClinicAdminCaller && callerDeptId) ? callerDeptId
+      : ((data as { department_id?: string | null }).department_id ?? null);
+
+    if (staffDeptId) {
+      const staffRes = await supabase
+        .from("profiles")
+        .select("id, full_name, staff_id")
+        .eq("department_id", staffDeptId)
+        .neq("id", (await supabase.auth.getUser()).data.user?.id ?? "");
+      if (staffRes.data) {
+        const { data: roleRows } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .eq("role", "clinic_staff");
+        const staffUserIds = new Set((roleRows ?? []).map((r) => r.user_id));
+        const options = (staffRes.data as { id: string; full_name: string | null; staff_id: string | null }[])
+          .filter((p) => staffUserIds.has(p.id))
+          .map((p) => ({
+            id: p.id,
+            full_name: p.full_name,
+            staff_id: p.staff_id,
+          }));
+        setStaffOptions(options);
+        // Resolve assigned staff name from options or fetch it
+        const assignedId = (data as { assigned_staff_id?: string | null }).assigned_staff_id;
+        if (assignedId) {
+          const found = options.find((s) => s.id === assignedId);
+          if (found) {
+            setAssignedStaffName(found.full_name ?? found.staff_id ?? assignedId);
+          } else {
+            const { data: actorRow } = await supabase
+              .from("profiles")
+              .select("full_name, staff_id")
+              .eq("id", assignedId)
+              .maybeSingle();
+            setAssignedStaffName(actorRow?.full_name ?? actorRow?.staff_id ?? assignedId);
+          }
+        } else {
+          setAssignedStaffName(null);
+        }
+      } else {
+        setStaffOptions([]);
+        setAssignedStaffName(null);
+      }
+    } else {
+      setStaffOptions([]);
     }
 
     const canSeeCompletionActor = portal === "hospital" && hasRole(roles, "hospital_admin", "admin");
@@ -153,41 +265,84 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
     });
   }, [id, nav, portal, roles]);
 
-  const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
-    void load();
-  }, 400);
-
   useEffect(() => {
     load();
     if (!id) return;
     const ch = supabase
-      .channel(`ref-detail-${id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "referrals", filter: `id=eq.${id}` }, debouncedRealtime)
+      .channel(`referral-${id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "referral_status_history", filter: `referral_id=eq.${id}` },
-        debouncedRealtime,
+        { event: "INSERT", schema: "public", table: "referral_messages", filter: `referral_id=eq.${id}` },
+        (p) => {
+          const row = referralMessageFromRealtime(p.new as Record<string, unknown>);
+          if (!row) return;
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === row.id)) return prev;
+            return [...prev, row].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          });
+        },
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "referral_attachments", filter: `referral_id=eq.${id}` },
-        debouncedRealtime,
+        { event: "INSERT", schema: "public", table: "referral_status_history", filter: `referral_id=eq.${id}` },
+        (p) => {
+          const row = historyRowFromRealtime(p.new as Record<string, unknown>);
+          if (!row) return;
+          setHist((prev) =>
+            [...prev, row].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+          );
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "referral_attachments", filter: `referral_id=eq.${id}` },
+        (p) => {
+          const row = attachmentFromRealtime(p.new as Record<string, unknown>);
+          if (!row) return;
+          setAtts((prev) => (prev.some((a) => a.id === row.id) ? prev : [...prev, row]));
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "referrals", filter: `id=eq.${id}` },
+        (p) => {
+          const raw = p.new as Record<string, unknown>;
+          setRef((prev) => {
+            if (!prev) return prev;
+            const spread = { ...prev, ...(raw as Partial<Referral>) };
+            spread.clinics = prev.clinics;
+            spread.hospitals = prev.hospitals;
+            spread.departments = prev.departments;
+            spread.source_department = prev.source_department;
+            return spread as Referral;
+          });
+          setVisibleAllDepartments(raw.visible_to_all_departments === true);
+        },
       )
       .subscribe();
     return () => {
-      cancelDebouncedRealtime();
       supabase.removeChannel(ch);
     };
-  }, [id, load, debouncedRealtime, cancelDebouncedRealtime]);
+  }, [id, load]);
 
   if (!ref) return <div className="p-10 text-center text-muted-foreground">Loading…</div>;
 
   const isHospital = portal === "hospital";
   const isHospitalAdmin = isHospital && hasRole(roles, "hospital_admin", "admin");
   const isHospitalStaff = isHospital && hasRole(roles, "hospital_staff");
-  const canHospitalAct = isHospital && hasRole(roles, "hospital_admin", "hospital_staff", "admin");
+  const isClinicAdmin = hasRole(roles, "clinic_admin");
+  const isClinicStaff = hasRole(roles, "clinic_staff");
+  const isDeptAdminForThisReferral =
+    !isHospital &&
+    isClinicAdmin &&
+    !!profile?.department_id &&
+    // Can act if they are the RECEIVING dept or the SENDING dept
+    (ref?.department_id === profile?.department_id ||
+      (ref as unknown as { source_department_id?: string | null })?.source_department_id === profile?.department_id);
+  const canStaffAct = !isHospital && isClinicStaff && ref?.assigned_staff_id === profile?.id;
+  const canAct = isHospitalAdmin || isHospitalStaff || isDeptAdminForThisReferral || canStaffAct;
   const isCompleted = ref.status === "completed";
-  const canOverrideCompletedLock = isHospital && hasRole(roles, "hospital_admin", "admin");
+  const canOverrideCompletedLock = (isHospital && hasRole(roles, "hospital_admin", "admin")) || isDeptAdminForThisReferral;
   const canAccept = !["accepted", "rejected", "completed"].includes(ref.status);
   const canReject = !["accepted", "rejected", "completed"].includes(ref.status);
 
@@ -235,6 +390,11 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
   const assignDoctor = async () => {
     if (!doctorId) return;
     await updateStatus(ref.status, { assigned_doctor_id: doctorId });
+  };
+
+  const assignStaff = async () => {
+    if (!staffId) return;
+    await updateStatus("assigned", { assigned_staff_id: staffId });
   };
 
   const createDoctor = async () => {
@@ -322,12 +482,15 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
               <Row k="Gender" v={ref.patient_gender ?? "—"} />
               <Row k="Phone" v={ref.patient_phone ?? "—"} />
             </Section>
-            <Section title="Clinic Information">
-              <Row k="Clinic ID" v={ref.clinics?.unique_id ?? "—"} />
-              <Row k="Clinic" v={ref.clinics?.name ?? "—"} />
-              <Row k="City" v={ref.clinics?.city ?? "—"} />
-              <Row k="Region" v={ref.clinics?.region ?? "—"} />
-              <Row k="Contact" v={ref.clinics?.contact ?? "—"} />
+            <Section title="Sending Department">
+              <Row k="Department" v={ref.source_department?.name ?? ref.clinics?.name ?? "—"} />
+              {ref.clinics && (
+                <>
+                  <Row k="City" v={ref.clinics.city ?? "—"} />
+                  <Row k="Region" v={ref.clinics.region ?? "—"} />
+                  <Row k="Contact" v={ref.clinics.contact ?? "—"} />
+                </>
+              )}
             </Section>
           </div>
 
@@ -382,7 +545,9 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
           {ref.assigned_staff_id && (
             <div className="mt-3 bg-secondary border border-border rounded-lg p-4">
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Assigned Staff</p>
-              <p className="mt-1 font-mono text-xs">{ref.assigned_staff_id}</p>
+              <p className="mt-1 text-sm font-medium">
+                {assignedStaffName ?? ref.assigned_staff_id}
+              </p>
             </div>
           )}
           {isHospitalStaff && (
@@ -403,11 +568,11 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
         </CardContent>
       </Card>
 
-      {/* Hospital actions */}
-      {canHospitalAct && (!isCompleted || canOverrideCompletedLock) && (
+      {/* Triage & actions */}
+      {canAct && (!isCompleted || canOverrideCompletedLock) && (
         <Card className="shadow-card no-print">
           <CardContent className="p-6 space-y-4">
-            <h3 className="font-display text-lg font-semibold">Hospital Actions</h3>
+            <h3 className="font-display text-lg font-semibold">{isHospital ? "Hospital Actions" : "Triage & Actions"}</h3>
             {isCompleted && canOverrideCompletedLock && (
               <p className="text-xs text-muted-foreground">
                 Completed referral lock is active for staff. You can still make final corrections as a hospital admin.
@@ -422,6 +587,26 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
             </div>
 
             <div className="grid md:grid-cols-2 gap-4 pt-4 border-t">
+              {isDeptAdminForThisReferral && (
+                <div>
+                  <Label>Assign staff member (Department Staff)</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Select value={staffId} onValueChange={setStaffId}>
+                      <SelectTrigger><SelectValue placeholder="Choose staff member" /></SelectTrigger>
+                      <SelectContent>
+                        {staffOptions.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.full_name || "Staff Member"} (ID: {s.staff_id || "—"})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button variant="hero" disabled={!staffId || busy} onClick={() => void assignStaff()}>
+                      Assign
+                    </Button>
+                  </div>
+                </div>
+              )}
               {isHospitalAdmin && (
                 <div>
                   <Label>Assign to department (Admin)</Label>
@@ -530,7 +715,7 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
                 </div>
               </div>
               <div className="md:col-span-2">
-                <Label>Send feedback to clinic</Label>
+                <Label>Send feedback to sending department</Label>
                 <div className="flex gap-2 mt-1">
                   <Textarea rows={2} value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Outcome / treatment summary…" />
                   <Button variant="hero" disabled={!feedback.trim() || busy} onClick={() => updateStatus(ref.status, { hospital_feedback: feedback })}>Send</Button>
@@ -556,7 +741,12 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
             </ol>
           </CardContent>
         </Card>
-        <MessagePanel referralId={ref.id} readOnly={isCompleted && !canOverrideCompletedLock} />
+        <MessagePanel
+          referralId={ref.id}
+          readOnly={isCompleted && !canOverrideCompletedLock}
+          messages={messages}
+          setMessages={setMessages}
+        />
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
@@ -12,25 +12,50 @@ import { sanitizeText } from "@/lib/sanitize";
 import { toast } from "sonner";
 import { safeClientError } from "@/lib/safeError";
 
-interface Msg { id: string; sender_id: string | null; message: string; created_at: string; }
+export interface ReferralChatMessage {
+  id: string;
+  sender_id: string | null;
+  message: string;
+  created_at: string;
+}
 
-export function MessagePanel({ referralId, readOnly = false }: { referralId: string; readOnly?: boolean }) {
+export function MessagePanel({
+  referralId,
+  readOnly = false,
+  messages: controlledMessages,
+  setMessages: controlledSetMessages,
+}: {
+  referralId: string;
+  readOnly?: boolean;
+  /** When provided with `setMessages`, realtime for this thread is handled by the parent. */
+  messages?: ReferralChatMessage[];
+  setMessages?: Dispatch<SetStateAction<ReferralChatMessage[]>>;
+}) {
   const { user } = useAuth();
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [internalMsgs, setInternalMsgs] = useState<ReferralChatMessage[]>([]);
+  const isManaged = controlledMessages != null && controlledSetMessages != null;
+  const msgs = useMemo(() => (isManaged ? controlledMessages! : internalMsgs), [isManaged, controlledMessages, internalMsgs]);
+  const setMsgs = isManaged ? controlledSetMessages! : setInternalMsgs;
+
   const [text, setText] = useState("");
   const runGuarded = useSubmitGuard();
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("referral_messages").select("*").eq("referral_id", referralId).order("created_at");
-    setMsgs((data ?? []) as Msg[]);
-  }, [referralId]);
+    setMsgs((data ?? []) as ReferralChatMessage[]);
+  }, [referralId, setMsgs]);
 
   const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
     void load();
   }, 250);
 
   useEffect(() => {
-    load();
+    if (isManaged) return;
+    void load();
+  }, [isManaged, load]);
+
+  useEffect(() => {
+    if (isManaged) return;
     const ch = supabase
       .channel(`msgs-${referralId}`)
       .on(
@@ -44,7 +69,7 @@ export function MessagePanel({ referralId, readOnly = false }: { referralId: str
           if (mid && typeof body === "string" && created) {
             setMsgs((prev) => {
               if (prev.some((m) => m.id === mid)) return prev;
-              const next: Msg[] = [
+              const next: ReferralChatMessage[] = [
                 ...prev,
                 {
                   id: mid,
@@ -75,7 +100,7 @@ export function MessagePanel({ referralId, readOnly = false }: { referralId: str
       cancelDebouncedRealtime();
       supabase.removeChannel(ch);
     };
-  }, [referralId, load, debouncedRealtime, cancelDebouncedRealtime]);
+  }, [isManaged, referralId, debouncedRealtime, cancelDebouncedRealtime, load, setMsgs]);
 
   const send = async () => {
     if (readOnly) return;

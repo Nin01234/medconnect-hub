@@ -26,6 +26,7 @@ const ClinicStaffManagement = lazy(() => import("./pages/clinic/ClinicStaffManag
 const HospitalDashboard = lazy(() => import("./pages/hospital/HospitalDashboard"));
 const HospitalInbox = lazy(() => import("./pages/hospital/HospitalInbox"));
 const AssignedCases = lazy(() => import("./pages/hospital/AssignedCases"));
+const DoctorDashboard = lazy(() => import("./pages/hospital/DoctorDashboard"));
 const FeedbackCenter = lazy(() => import("./pages/hospital/FeedbackCenter"));
 const Departments = lazy(() => import("./pages/hospital/Departments"));
 const StaffManagement = lazy(() => import("./pages/hospital/StaffManagement"));
@@ -88,10 +89,13 @@ const App = () => {
                     <Route path="reset-password" element={<PortalResetPassword />} />
                   </Route>
 
-                  <Route path="/hospital" element={<RequireRole roles={["hospital_admin", "hospital_staff", "admin"]}><HospitalLayout /></RequireRole>}>
+                  <Route path="/hospital" element={<RequireRole roles={["hospital_admin", "hospital_staff", "doctor", "admin"]}><HospitalLayout /></RequireRole>}>
                     <Route index element={<HospitalDashboard />} />
+                    <Route path="doctor" element={<DoctorDashboard />} />
                     <Route path="inbox" element={<HospitalInbox />} />
                     <Route path="referrals/:id/review" element={<ReferralDetail portal="hospital" />} />
+                    <Route path="referrals/new" element={<CreateReferral />} />
+                    <Route path="referrals" element={<MyReferrals />} />
                     <Route path="patients/:patientId" element={<PatientReferralHistory portal="hospital" />} />
                     <Route path="assigned" element={<AssignedCases />} />
                     <Route path="feedback" element={<FeedbackCenter />} />

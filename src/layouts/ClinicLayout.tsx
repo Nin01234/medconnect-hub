@@ -68,7 +68,7 @@ export default function ClinicLayout() {
               </div>
               <div>
                 <p className="font-display text-lg font-semibold leading-none">{BRAND.appShort}</p>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Clinic Portal</p>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Department Portal</p>
               </div>
             </Link>
           </div>
@@ -78,7 +78,7 @@ export default function ClinicLayout() {
             </div>
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium leading-tight">{profile?.full_name ?? "—"}</p>
-              <p className="text-xs text-muted-foreground leading-tight">{hasRole(roles, "clinic_admin") ? "Clinic Admin" : "Clinic User"}</p>
+              <p className="text-xs text-muted-foreground leading-tight">{hasRole(roles, "clinic_admin") ? "Department Admin" : "Department Staff"}</p>
             </div>
             <Button variant="ghost" size="icon" onClick={() => signOut().then(() => nav("/"))} aria-label="Sign out">
               <LogOut className="h-4 w-4" />

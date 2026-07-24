@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE);
     const [{ data: roleRows }, { data: callerProfile }] = await Promise.all([
       admin.from('user_roles').select('role').eq('user_id', callerId),
-      admin.from('profiles').select('hospital_id').eq('id', callerId).maybeSingle(),
+      admin.from('profiles').select('hospital_id, department_id').eq('id', callerId).maybeSingle(),
     ]);
     const callerRoles = new Set((roleRows ?? []).map((r) => r.role));
     const isAdmin = callerRoles.has('admin');
@@ -220,39 +220,55 @@ Deno.serve(async (req) => {
     if (body.department_id && !UUID_RE.test(body.department_id)) return fail(req, "Invalid department reference");
     if (body.staff_id !== undefined) body.staff_id = cap(body.staff_id, 50);
 
+    if (isAdmin) {
+      if (body.role !== "hospital_admin") {
+        return fail(req, "Super admins can only create hospital admin accounts", 403);
+      }
+      if (body.new_clinic || body.clinic_id || body.department_id) {
+        return fail(req, "Super admins cannot assign departments or clinics", 403);
+      }
+    }
+
     if (isHospitalAdmin) {
       const callerHospitalId = callerProfile?.hospital_id ?? null;
       if (!callerHospitalId) return fail(req, "Hospital admin must belong to a hospital", 403);
-      if (body.role !== "hospital_staff") return fail(req, "Hospital admins can only create hospital staff", 403);
-      if (body.new_hospital || body.new_clinic || body.clinic_id) return fail(req, "Hospital admins cannot create organizations", 403);
-      if (body.hospital_id && body.hospital_id !== callerHospitalId) return fail(req, "Hospital admins can only create staff in their own hospital", 403);
-      if (!body.department_id) return fail(req, "Department is required for hospital staff");
+      if (body.role !== "clinic_admin") {
+        return fail(req, "Hospital admins can only create department admin accounts", 403);
+      }
+      if (body.new_hospital || body.new_clinic || body.clinic_id) {
+        return fail(req, "Hospital admins cannot create organizations or assign clinics", 403);
+      }
+      if (!body.department_id) {
+        return fail(req, "Department is required for department admins");
+      }
+      if (body.hospital_id && body.hospital_id !== callerHospitalId) {
+        return fail(req, "Hospital admins can only create staff in their own hospital", 403);
+      }
       if (!body.staff_id || !body.staff_id.trim()) return fail(req, "Staff ID is required");
       body.hospital_id = callerHospitalId;
+      body.clinic_id = null;
     }
 
     if (isClinicAdmin) {
-      const { data: callerClinicProfile } = await admin.from('profiles').select('clinic_id').eq('id', callerId).maybeSingle();
-      const callerClinicId = callerClinicProfile?.clinic_id ?? null;
-      if (!callerClinicId) return fail(req, "Clinic admin must belong to a clinic", 403);
-      if (body.role !== "clinic_staff") return fail(req, "Clinic admins can only create clinic staff", 403);
-      if (body.new_hospital || body.new_clinic || body.hospital_id) return fail(req, "Clinic admins cannot create organizations", 403);
-      if (body.clinic_id && body.clinic_id !== callerClinicId) return fail(req, "Clinic admins can only create staff in their own clinic", 403);
-      if (!body.staff_id || !body.staff_id.trim()) return fail(req, "Staff ID is required");
-      body.clinic_id = callerClinicId;
-    }
-
-    if (isAdmin) {
-      if (!["hospital_admin", "clinic_admin"].includes(body.role)) {
-        return fail(req, "Main admin can only create Hospital Admin or Clinic Admin accounts", 403);
+      const callerHospitalId = callerProfile?.hospital_id ?? null;
+      const callerDeptId = callerProfile?.department_id ?? null;
+      if (!callerHospitalId || !callerDeptId) {
+        return fail(req, "Department admin must be linked to a hospital and a department", 403);
       }
+      if (body.role !== "clinic_staff") {
+        return fail(req, "Department admins can only create department staff accounts", 403);
+      }
+      if (body.new_hospital || body.new_clinic || body.clinic_id) {
+        return fail(req, "Department admins cannot assign clinics or create organizations", 403);
+      }
+      if (!body.staff_id || !body.staff_id.trim()) return fail(req, "Staff ID is required");
+      body.hospital_id = callerHospitalId;
+      body.department_id = callerDeptId;
+      body.clinic_id = null;
     }
 
     if (body.role === "hospital_admin" && !body.hospital_id && !body.new_hospital) {
       return fail(req, "Hospital is required for hospital admin");
-    }
-    if (body.role === "clinic_admin" && !body.clinic_id && !body.new_clinic) {
-      return fail(req, "Clinic is required for clinic admin");
     }
 
     const resolvedEmail = body.email || fallbackEmailFromUsername(body.username);
@@ -320,7 +336,9 @@ Deno.serve(async (req) => {
       if (!dep || dep.hospital_id !== hospital_id) return fail(req, "Department does not belong to this hospital");
     }
     if (body.role === "clinic_staff") {
-      if (!clinic_id) return fail(req, "Clinic is required for clinic staff");
+      // Department staff are linked via department_id (set by the isClinicAdmin block above).
+      // They never have a clinic_id — only standalone clinic users do.
+      if (!body.department_id) return fail(req, "Department is required for department staff");
       if (!body.staff_id || !body.staff_id.trim()) return fail(req, "Staff ID is required");
     }
 
@@ -359,7 +377,7 @@ Deno.serve(async (req) => {
       clinic_id,
       hospital_id,
     };
-    if (body.role === "hospital_staff" || body.role === "clinic_staff") {
+    if (body.role === "hospital_staff" || body.role === "clinic_staff" || body.role === "clinic_admin") {
       profileUpdate.department_id = body.department_id ?? null;
       profileUpdate.staff_id = body.staff_id?.trim() || null;
     }
@@ -382,7 +400,7 @@ Deno.serve(async (req) => {
       return fail(req, "Could not create user profile");
     }
 
-    if (body.role === "hospital_staff") {
+    if (body.role === "hospital_staff" || body.role === "clinic_staff" || body.role === "clinic_admin") {
       const { data: createdProfile, error: createdProfileErr } = await admin
         .from("profiles")
         .select("department_id, staff_id")
@@ -396,22 +414,6 @@ Deno.serve(async (req) => {
       if (!createdProfile?.department_id || !createdProfile?.staff_id) {
         await admin.auth.admin.deleteUser(newUserId);
         return fail(req, "Staff ID or department was not saved correctly");
-      }
-    }
-    if (body.role === "clinic_staff") {
-      const { data: createdProfile, error: createdProfileErr } = await admin
-        .from("profiles")
-        .select("clinic_id, staff_id")
-        .eq("id", newUserId)
-        .maybeSingle();
-      if (createdProfileErr) {
-        console.error(createdProfileErr);
-        await admin.auth.admin.deleteUser(newUserId);
-        return fail(req, "Could not verify clinic staff profile fields");
-      }
-      if (!createdProfile?.clinic_id || !createdProfile?.staff_id) {
-        await admin.auth.admin.deleteUser(newUserId);
-        return fail(req, "Staff ID or clinic was not saved correctly");
       }
     }
 

@@ -3,14 +3,14 @@ import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import { referralKeys } from "@/lib/referralQueryKeys";
-import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { sanitizeText } from "@/lib/sanitize";
+import { hasRole } from "@/context/authRoles";
+import { cn } from "@/lib/utils";
 
 interface Row {
   id: string;
@@ -22,68 +22,136 @@ interface Row {
   created_at: string;
   hospital_feedback: string | null;
   hospitals: { name: string } | null;
+  departments: { name: string } | null;
+  department_id: string | null;
+  source_department_id: string | null;
+  assigned_staff_id: string | null;
+  created_by: string | null;
 }
 
 export default function MyReferrals() {
-  const { profile } = useAuth();
+  const { profile, roles } = useAuth();
   const queryClient = useQueryClient();
-  const clinicId = profile?.clinic_id ?? null;
+  const isHospitalPortal = window.location.pathname.startsWith("/hospital");
+  const departmentId = profile?.department_id ?? null;
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
+  const [activeTab, setActiveTab] = useState<"sent" | "incoming">("sent");
 
-  const { data: rows = [] } = useQuery({
-    queryKey: clinicId ? referralKeys.clinicMyReferrals(clinicId) : ["referrals", "clinic", "inactive", "my"],
-    enabled: !!clinicId,
+  const isClinicAdmin = hasRole(roles, "clinic_admin");
+  const isClinicStaff = hasRole(roles, "clinic_staff");
+
+  const queryKey = useMemo(() => ["referrals", "department", departmentId ?? "none"], [departmentId]);
+
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey,
+    enabled: !!departmentId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      if (!departmentId) return [];
+      let query = supabase
         .from("referrals")
-        .select("id, referral_number, patient_id, patient_name, status, urgency_level, created_at, hospital_feedback, hospitals(name)")
-        .eq("clinic_id", clinicId!)
-        .order("created_at", { ascending: false });
+        .select(`
+          id,
+          referral_number,
+          patient_id,
+          patient_name,
+          status,
+          urgency_level,
+          created_at,
+          hospital_feedback,
+          hospitals(name),
+          departments!department_id(name),
+          department_id,
+          source_department_id,
+          assigned_staff_id,
+          created_by
+        `);
+      
+      if (isClinicAdmin) {
+        query = query.or(`department_id.eq.${departmentId},source_department_id.eq.${departmentId}`);
+      } else {
+        query = query.or(`created_by.eq.${profile?.id},assigned_staff_id.eq.${profile?.id}`);
+      }
+      
+      const { data, error } = await query.order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as unknown as Row[];
     },
   });
 
-  const [debouncedClinicList, cancelDebouncedClinicList] = useDebouncedCallback(() => {
-    if (clinicId) void queryClient.invalidateQueries({ queryKey: referralKeys.clinicRoot(clinicId) });
-  }, 400);
-
   useEffect(() => {
-    if (!clinicId) return;
+    if (!departmentId) return;
     const ch = supabase
-      .channel(`clinic-my-refs-${clinicId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "referrals", filter: `clinic_id=eq.${clinicId}` },
-        debouncedClinicList,
-      )
+      .channel(`my-refs-dept-${departmentId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "referrals" }, () => {
+        void queryClient.invalidateQueries({ queryKey });
+      })
       .subscribe();
     return () => {
-      cancelDebouncedClinicList();
-      supabase.removeChannel(ch);
+      void supabase.removeChannel(ch);
     };
-  }, [clinicId, debouncedClinicList, cancelDebouncedClinicList, queryClient]);
+  }, [departmentId, queryKey, queryClient]);
 
   const normalizedQuery = sanitizeText(q, 200).toLowerCase();
-  const filtered = useMemo(
-    () =>
-      rows.filter(
-        (r) =>
-          (status === "all" || r.status === status) &&
-          (normalizedQuery === "" ||
-            r.patient_name.toLowerCase().includes(normalizedQuery) ||
-            r.referral_number?.toLowerCase().includes(normalizedQuery)),
-      ),
-    [rows, status, normalizedQuery],
-  );
+  const filtered = useMemo(() => {
+    return rows.filter((r) => {
+      // Search matching
+      const matchesSearch =
+        normalizedQuery === "" ||
+        r.patient_name.toLowerCase().includes(normalizedQuery) ||
+        r.referral_number?.toLowerCase().includes(normalizedQuery);
+      
+      // Status matching
+      const matchesStatus = status === "all" || r.status === status;
+      
+      // Tab matching
+      let matchesTab = false;
+      if (activeTab === "sent") {
+        matchesTab = isClinicAdmin
+          ? r.source_department_id === departmentId
+          : r.created_by === profile?.id;
+      } else {
+        matchesTab = isClinicAdmin
+          ? r.department_id === departmentId
+          : r.assigned_staff_id === profile?.id;
+      }
+      
+      return matchesSearch && matchesStatus && matchesTab;
+    });
+  }, [rows, status, normalizedQuery, activeTab, isClinicAdmin, departmentId, profile?.id]);
 
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="font-display text-3xl font-bold">My Referrals</h1>
-        <p className="text-muted-foreground">{rows.length} total</p>
+        <h1 className="font-display text-3xl font-bold">Referrals</h1>
+        <p className="text-muted-foreground">{filtered.length} visible</p>
       </div>
+
+      <div className="flex border-b border-border">
+        <button
+          onClick={() => setActiveTab("sent")}
+          className={cn(
+            "px-4 py-2 border-b-2 font-medium text-sm transition-colors",
+            activeTab === "sent"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {isClinicAdmin ? "Sent Referrals" : "My Sent Referrals"}
+        </button>
+        <button
+          onClick={() => setActiveTab("incoming")}
+          className={cn(
+            "px-4 py-2 border-b-2 font-medium text-sm transition-colors",
+            activeTab === "incoming"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {isClinicAdmin ? "Incoming Referrals" : "Assigned Incoming Referrals"}
+        </button>
+      </div>
+
       <div className="flex gap-3 flex-wrap">
         <Input placeholder="Search patient or referral #" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-sm" />
         <Select value={status} onValueChange={setStatus}>
@@ -100,6 +168,7 @@ export default function MyReferrals() {
           </SelectContent>
         </Select>
       </div>
+
       <Card className="shadow-card">
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm">
@@ -107,7 +176,7 @@ export default function MyReferrals() {
               <tr>
                 <th className="text-left px-5 py-3">Ref #</th>
                 <th className="text-left px-5 py-3">Patient</th>
-                <th className="text-left px-5 py-3">Hospital</th>
+                <th className="text-left px-5 py-3">Department</th>
                 <th className="text-left px-5 py-3">Urgency</th>
                 <th className="text-left px-5 py-3">Status</th>
                 <th className="text-left px-5 py-3">Feedback</th>
@@ -119,12 +188,12 @@ export default function MyReferrals() {
               {filtered.map((r) => (
                 <tr key={r.id} className="border-b hover:bg-secondary/30">
                   <td className="px-5 py-3 font-mono text-xs">
-                    <Link to={`/clinic/referrals/${r.id}`} className="text-primary hover:underline">
+                    <Link to={isHospitalPortal ? `/hospital/referrals/${r.id}/review` : `/clinic/referrals/${r.id}`} className="text-primary hover:underline">
                       {r.referral_number}
                     </Link>
                   </td>
                   <td className="px-5 py-3 font-medium">{r.patient_name}</td>
-                  <td className="px-5 py-3">{r.hospitals?.name ?? "—"}</td>
+                  <td className="px-5 py-3">{r.departments?.name ?? "—"}</td>
                   <td className="px-5 py-3">
                     <UrgencyBadge level={r.urgency_level} />
                   </td>
@@ -142,7 +211,7 @@ export default function MyReferrals() {
                   </td>
                   <td className="px-5 py-3 text-xs">
                     {r.patient_id ? (
-                      <Link to={`/clinic/patients/${r.patient_id}`} className="text-primary hover:underline">
+                      <Link to={isHospitalPortal ? `/hospital/patients/${r.patient_id}` : `/clinic/patients/${r.patient_id}`} className="text-primary hover:underline">
                         View history
                       </Link>
                     ) : (
@@ -155,7 +224,7 @@ export default function MyReferrals() {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="text-center py-10 text-muted-foreground">
-                    No referrals match.
+                    {isLoading ? "Loading..." : "No referrals match."}
                   </td>
                 </tr>
               )}

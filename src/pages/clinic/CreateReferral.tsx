@@ -24,12 +24,12 @@ const ALLOWED_ATTACHMENT_TYPES = new Set([
   "image/gif",
 ]);
 
-interface Hospital { id: string; name: string; city: string | null; type: string; }
+interface Department { id: string; name: string; }
 
 export default function CreateReferral() {
   const { user, profile } = useAuth();
   const nav = useNavigate();
-  const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -38,21 +38,29 @@ export default function CreateReferral() {
     patient_name: "", patient_age: "", patient_gender: "" as "" | "male" | "female" | "other", patient_phone: "",
     diagnosis: "", symptoms: "", urgency_level: "medium" as "low" | "medium" | "high" | "critical",
     vitals_bp: "", vitals_hr: "", vitals_temp: "", vitals_rr: "", vitals_spo2: "",
-    referral_reason: "", hospital_id: "", notes: "",
+    referral_reason: "", department_id: "", notes: "",
   });
 
   useEffect(() => {
-    supabase.from("hospitals").select("id,name,city,type").order("name").then(({ data }) => setHospitals((data ?? []) as Hospital[]));
-  }, []);
+    if (profile?.hospital_id) {
+      supabase
+        .from("departments")
+        .select("id,name")
+        .eq("hospital_id", profile.hospital_id)
+        .eq("status", "active")
+        .order("name")
+        .then(({ data }) => setDepartments((data ?? []) as Department[]));
+    }
+  }, [profile?.hospital_id]);
 
   const update = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploadErrors([]);
-    if (!profile?.clinic_id) return toast.error("Your account is not linked to a clinic");
+    if (!profile?.department_id) return toast.error("Your account is not linked to a department");
     if (!user?.id) return toast.error("You must be signed in to submit a referral");
-    if (!form.hospital_id) return toast.error("Select a preferred hospital");
+    if (!form.department_id) return toast.error("Select a target department");
     const parsed = createReferralSchema.safeParse({
       ...form,
       patient_gender: form.patient_gender || "",
@@ -81,27 +89,52 @@ export default function CreateReferral() {
       const gender: "male" | "female" | "other" | null =
         v.patient_gender === "" ? null : v.patient_gender;
 
-      const { data: patientId, error: patientErr } = await supabase.rpc("upsert_patient_for_clinic", {
-        p_clinic_id: profile.clinic_id,
-        p_full_name: patientName,
-        p_age: patientAge,
-        p_gender: gender,
-        p_phone: patientPhone,
-      });
-      if (patientErr) throw patientErr;
+      // Department-linked users (clinic_admin/clinic_staff with department_id, no clinic_id)
+      // must use the department-scoped patient RPC. Clinic-linked users use the clinic RPC.
+      const isDepartmentLinked = !profile.clinic_id && !!profile.department_id;
 
-      const pid = (patientId as string | null | undefined) ?? null;
+      let patientId: string | null = null;
+      if (isDepartmentLinked) {
+        const { data, error: patientErr } = await supabase.rpc("upsert_patient_for_department", {
+          p_department_id: profile.department_id,
+          p_full_name: patientName,
+          p_age: patientAge,
+          p_gender: gender,
+          p_phone: patientPhone,
+        });
+        if (patientErr) throw patientErr;
+        patientId = (data as string | null | undefined) ?? null;
+      } else {
+        const { data, error: patientErr } = await supabase.rpc("upsert_patient_for_clinic", {
+          p_clinic_id: profile.clinic_id,
+          p_full_name: patientName,
+          p_age: patientAge,
+          p_gender: gender,
+          p_phone: patientPhone,
+        });
+        if (patientErr) throw patientErr;
+        patientId = (data as string | null | undefined) ?? null;
+      }
+
+      const pid = patientId ?? null;
       let priorReferralCount = 0;
       if (pid) {
-        const { count, error: countErr } = await supabase
+        const countQuery = supabase
           .from("referrals")
           .select("id", { count: "exact", head: true })
-          .eq("patient_id", pid)
-          .eq("clinic_id", profile.clinic_id);
+          .eq("patient_id", pid);
+        // Scope the prior-referral count to the user's org
+        if (isDepartmentLinked) {
+          countQuery.eq("source_department_id", profile.department_id);
+        } else {
+          countQuery.eq("clinic_id", profile.clinic_id);
+        }
+        const { count, error: countErr } = await countQuery;
         if (!countErr && count != null) {
           priorReferralCount = count;
         }
       }
+
 
       const { data: ref, error } = await supabase
         .from("referrals")
@@ -121,8 +154,10 @@ export default function CreateReferral() {
           urgency_level: v.urgency_level,
           referral_reason: sanitizeText(v.referral_reason, 12000),
           notes: v.notes ? sanitizeText(v.notes, 12000) : null,
-          hospital_id: v.hospital_id,
-          clinic_id: profile.clinic_id,
+          hospital_id: profile.hospital_id,
+          department_id: v.department_id,
+          source_department_id: profile.department_id,
+          clinic_id: null,
           created_by: user.id,
           status: "new",
         })
@@ -164,7 +199,8 @@ export default function CreateReferral() {
       } else {
         toast.success("Referral submitted.");
       }
-      nav(`/clinic/referrals/${ref.id}`);
+      const isHospitalPortal = window.location.pathname.startsWith("/hospital");
+      nav(isHospitalPortal ? `/hospital/referrals/${ref.id}/review` : `/clinic/referrals/${ref.id}`);
     } catch (err) {
       toast.error(safeClientError(err));
     } finally { setBusy(false); }
@@ -223,11 +259,11 @@ export default function CreateReferral() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Preferred Hospital *">
-              <Select value={form.hospital_id} onValueChange={v => update("hospital_id", v)}>
-                <SelectTrigger><SelectValue placeholder="Select hospital" /></SelectTrigger>
+            <Field label="Target Department *">
+              <Select value={form.department_id} onValueChange={v => update("department_id", v)}>
+                <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
                 <SelectContent>
-                  {hospitals.map(h => <SelectItem key={h.id} value={h.id}>{h.name}{h.city ? ` — ${h.city}` : ""}</SelectItem>)}
+                  {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </Field>

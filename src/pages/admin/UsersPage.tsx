@@ -53,7 +53,7 @@ export default function UsersPage() {
     email: "",
     username: "",
     phone: "",
-    role: "clinic_admin",
+    role: "hospital_admin",
     status: "active" as UserStatus,
     clinic_id: "",
     hospital_id: "",
@@ -164,7 +164,7 @@ export default function UsersPage() {
 
   // Form state
   const [form, setForm] = useState({
-    full_name: "", email: "", username: "", phone: "", password: "", role: "clinic_admin",
+    full_name: "", email: "", username: "", phone: "", password: "", role: "hospital_admin",
     status: "active" as UserStatus,
     org_mode: "existing" as "existing" | "new", clinic_id: "", hospital_id: "",
     department_id: "",
@@ -464,7 +464,6 @@ export default function UsersPage() {
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="clinic_admin">Clinic Admin</SelectItem>
                         <SelectItem value="hospital_admin">Hospital Admin</SelectItem>
                       </SelectContent>
                     </Select>
@@ -681,10 +680,9 @@ export default function UsersPage() {
             <F label="Phone"><Input value={edit.phone} onChange={(e) => setEdit((x) => ({ ...x, phone: e.target.value }))} /></F>
             <Two>
               <F label="Role">
-                <Select value={edit.role} onValueChange={(v) => setEdit((x) => ({ ...x, role: v, clinic_id: v === "clinic_user" || v === "clinic_admin" || v === "clinic_staff" ? x.clinic_id : "", hospital_id: v === "hospital_admin" || v === "hospital_staff" ? x.hospital_id : "" }))}>
+                <Select value={edit.role} onValueChange={(v) => setEdit((x) => ({ ...x, role: v, clinic_id: "", hospital_id: x.hospital_id }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="clinic_admin">Clinic Admin</SelectItem>
                     <SelectItem value="hospital_admin">Hospital Admin</SelectItem>
                   </SelectContent>
                 </Select>

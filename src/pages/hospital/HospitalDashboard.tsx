@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { hasRole } from "@/context/authRoles";
-import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { useDepartmentRow } from "@/hooks/useDepartmentRow";
 import { referralKeys } from "@/lib/referralQueryKeys";
 import {
@@ -13,7 +12,7 @@ import {
 } from "@/lib/hospitalReferralListFilters";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Inbox, Flame, CheckCircle2, XCircle, ClipboardList, Award, Building2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -78,6 +77,10 @@ function AnimatedCount({ value }: { value: number }) {
 export default function HospitalDashboard() {
   const { profile, roles } = useAuth();
   const queryClient = useQueryClient();
+  const isDoctorPortal =
+    hasRole(roles, "doctor") && !hasRole(roles, "hospital_admin", "hospital_staff", "admin");
+  const [agentDebug, setAgentDebug] = useState<Record<string, unknown> | null>(null);
+
   const hospitalId = profile?.hospital_id ?? null;
   const fallbackHospitalName = profile?.hospitals?.name?.trim() ?? "";
   const isHospitalStaff = hasRole(roles, "hospital_staff");
@@ -85,6 +88,14 @@ export default function HospitalDashboard() {
   const canTriageHospitalQueue = hasRole(roles, "admin") || hasRole(roles, "hospital_admin");
   const staffDepartmentId = profile?.department_id ?? null;
   const listScope = hospitalReferralListScopeKey(canTriageHospitalQueue, staffDepartmentId);
+  const debugEnabled = useMemo(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return p.get("debug") === "11eafa";
+    } catch {
+      return false;
+    }
+  }, []);
 
   const { data: deptRow } = useDepartmentRow(profile?.department_id, isHospitalStaff && !!profile?.department_id);
   const staffDepartmentName = deptRow?.status === "active" ? (deptRow?.name ?? "") : "";
@@ -106,7 +117,9 @@ export default function HospitalDashboard() {
 
   const {
     data: rows = [],
+    error: referralsError,
     isPending: referralsQueryPending,
+    isFetching,
   } = useQuery({
     queryKey: hospitalId ? referralKeys.hospitalDashboard(hospitalId, listScope) : ["referrals", "hospital", "inactive", "dashboard"],
     enabled: !!hospitalId,
@@ -122,20 +135,107 @@ export default function HospitalDashboard() {
         departmentId: staffDepartmentId,
       });
       const { data, error } = await query.order("created_at", { ascending: false }).limit(100);
-      if (error) throw error;
+      if (error) {
+        // #region agent log (debug-mode)
+        fetch("http://127.0.0.1:7930/ingest/ffa8cccd-d5ba-44b3-8be7-88ecdf51e175", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "11eafa" },
+          body: JSON.stringify({
+            sessionId: "11eafa",
+            runId: "pre-fix",
+            hypothesisId: "H1",
+            location: "src/pages/hospital/HospitalDashboard.tsx:queryFn",
+            message: "HospitalDashboard referrals query error",
+            data: {
+              hasHospitalId: !!hospitalId,
+              canTriageHospitalQueue,
+              hasStaffDepartmentId: !!staffDepartmentId,
+              listScope,
+              supabaseErrorCode: (error as { code?: unknown })?.code ?? null,
+              supabaseErrorMessage: (error as { message?: unknown })?.message ?? null,
+            },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion agent log (debug-mode)
+        throw error;
+      }
+      // #region agent log (debug-mode)
+      fetch("http://127.0.0.1:7930/ingest/ffa8cccd-d5ba-44b3-8be7-88ecdf51e175", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "11eafa" },
+        body: JSON.stringify({
+          sessionId: "11eafa",
+          runId: "pre-fix",
+          hypothesisId: "H2",
+          location: "src/pages/hospital/HospitalDashboard.tsx:queryFn",
+          message: "HospitalDashboard referrals query ok",
+          data: {
+            hasHospitalId: !!hospitalId,
+            canTriageHospitalQueue,
+            hasStaffDepartmentId: !!staffDepartmentId,
+            listScope,
+            rowCount: Array.isArray(data) ? data.length : null,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion agent log (debug-mode)
       return (data ?? []) as unknown as Row[];
+    },
+    onSuccess: (data) => {
+      if (!debugEnabled) return;
+      setAgentDebug({
+        page: "HospitalDashboard",
+        hasHospitalId: !!hospitalId,
+        canTriageHospitalQueue,
+        hasStaffDepartmentId: !!staffDepartmentId,
+        listScope,
+        rowCount: Array.isArray(data) ? data.length : null,
+      });
+    },
+    onError: (err) => {
+      if (!debugEnabled) return;
+      const e = err as { code?: unknown; message?: unknown };
+      setAgentDebug({
+        page: "HospitalDashboard",
+        hasHospitalId: !!hospitalId,
+        canTriageHospitalQueue,
+        hasStaffDepartmentId: !!staffDepartmentId,
+        listScope,
+        supabaseErrorCode: e?.code ?? null,
+        supabaseErrorMessage: e?.message ?? null,
+      });
     },
   });
 
-  const [debouncedRealtime, cancelDebouncedRealtime] = useDebouncedCallback(() => {
-    if (hospitalId) void queryClient.invalidateQueries({ queryKey: referralKeys.hospitalRoot(hospitalId) });
-  }, 400);
-
   useEffect(() => {
     if (!hospitalId) return;
+    // #region agent log (debug-mode)
+    fetch("http://127.0.0.1:7930/ingest/ffa8cccd-d5ba-44b3-8be7-88ecdf51e175", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "11eafa" },
+      body: JSON.stringify({
+        sessionId: "11eafa",
+        runId: "pre-fix",
+        hypothesisId: "H0",
+        location: "src/pages/hospital/HospitalDashboard.tsx:useEffect",
+        message: "HospitalDashboard effect mounted",
+        data: {
+          hasHospitalId: !!hospitalId,
+          canTriageHospitalQueue,
+          hasStaffDepartmentId: !!staffDepartmentId,
+          listScope,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion agent log (debug-mode)
+
     const dashKey = referralKeys.hospitalDashboard(hospitalId, listScope);
     const filter = `hospital_id=eq.${hospitalId}`;
     const visibilityOpts = { canTriageHospitalQueue, departmentId: staffDepartmentId };
+    const channelName = canTriageHospitalQueue ? `hospital-admin-${hospitalId}` : `hospital-staff-${hospitalId}`;
 
     const onInsert = (payload: { new: Record<string, unknown> }) => {
       const incoming = rowFromReferralRealtime(payload.new);
@@ -146,10 +246,7 @@ export default function HospitalDashboard() {
         if (list.some((r) => r.id === incoming.id)) return list;
         return [incoming, ...list].slice(0, 100);
       });
-      toast.success(
-        `New referral arrived: ${incoming.referral_number ?? "—"} — ${incoming.urgency_level} priority`,
-      );
-      debouncedRealtime();
+      toast.success(`New referral: ${incoming.referral_number ?? "—"} — ${incoming.urgency_level}`);
     };
 
     const onUpdate = (payload: { new: Record<string, unknown> }) => {
@@ -173,28 +270,24 @@ export default function HospitalDashboard() {
         next[i] = merged;
         return next;
       });
-      debouncedRealtime();
+    };
+
+    const onDelete = (payload: { old: Record<string, unknown> }) => {
+      const rid = payload.old?.id != null ? String(payload.old.id) : null;
+      if (!rid) return;
+      queryClient.setQueryData<Row[]>(dashKey, (prev) => (prev ?? []).filter((r) => r.id !== rid));
     };
 
     const ch = supabase
-      .channel(`hospital-staff-dashboard-${hospitalId}`)
+      .channel(channelName)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "referrals", filter }, onInsert)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "referrals", filter }, onUpdate)
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "referrals", filter }, debouncedRealtime)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "referrals", filter }, onDelete)
       .subscribe();
     return () => {
-      cancelDebouncedRealtime();
       supabase.removeChannel(ch);
     };
-  }, [
-    hospitalId,
-    listScope,
-    canTriageHospitalQueue,
-    staffDepartmentId,
-    queryClient,
-    debouncedRealtime,
-    cancelDebouncedRealtime,
-  ]);
+  }, [hospitalId, listScope, canTriageHospitalQueue, staffDepartmentId, queryClient]);
 
   const c = useMemo(
     () => ({
@@ -235,6 +328,8 @@ export default function HospitalDashboard() {
     return () => window.clearInterval(interval);
   }, [heroHighlights.length]);
 
+  if (isDoctorPortal) return <Navigate to="/hospital/doctor" replace />;
+
   const totalCases = c.new + c.high + c.accepted + c.rejected + c.assigned + c.completed;
   const statusCards = [
     { label: "New", value: c.new, icon: Inbox, tone: "from-cyan-500/20 to-cyan-500/5 border-cyan-500/30", iconTone: "text-cyan-600 dark:text-cyan-300 bg-cyan-500/15" },
@@ -247,6 +342,26 @@ export default function HospitalDashboard() {
 
   return (
     <div className="space-y-6">
+      {debugEnabled && (
+        <pre
+          data-agent-debug="11eafa"
+          className="rounded-lg border bg-secondary/20 p-3 text-xs overflow-auto whitespace-pre-wrap"
+        >
+          {JSON.stringify(
+            {
+              agentDebug,
+              queryState: {
+                isPending: referralsQueryPending,
+                isFetching,
+                hasError: !!referralsError,
+                rows: rows.length,
+              },
+            },
+            null,
+            2,
+          )}
+        </pre>
+      )}
       <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-card to-cyan-500/10 p-6 shadow-card">
         <div className="flex items-end justify-between gap-3 flex-wrap">
           <div>

@@ -50,8 +50,8 @@ export const HERO_ROTATIONS: HeroRotation[] = [
 
 export const SUBTEXT_ROTATIONS: string[] = [
   "Manage referrals, track hospital responses, and keep your team aligned in one secure place.",
-  "Structured, real-time referral workflow for Ghana Military Service Hospital & Clinic and partner sites.",
-  "Role-based access, admin-managed account approvals, and audit-friendly records for military health operations.",
+  "Structured, real-time referral workflow for Hospital Referral System and partner sites.",
+  "Role-based access, admin-managed account approvals, and audit-friendly records for health operations.",
   "From peripheral clinics to the main hospital — one pipeline for referrals, messages, and outcomes.",
 ];
 
@@ -106,9 +106,9 @@ export const FEATURE_SLIDES: FeatureCardDef[][] = [
 
 /** Smaller tagline above hero on landing */
 export const BADGE_ROTATIONS: string[] = [
-  "Ghana Military Service Hospital & Clinic",
+  "Hospital Referral System",
   "Care coordination · secure referrals",
-  "Built for military health operations",
+  "Built for health operations",
   "Real-time · role-based · admin-gated access",
 ];
 

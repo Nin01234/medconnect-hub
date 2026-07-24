@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE);
     const [{ data: roleRows }, { data: callerProfile }] = await Promise.all([
       admin.from("user_roles").select("role").eq("user_id", callerId),
-      admin.from("profiles").select("hospital_id, clinic_id").eq("id", callerId).maybeSingle(),
+      admin.from("profiles").select("hospital_id, department_id").eq("id", callerId).maybeSingle(),
     ]);
     const callerRoles = new Set((roleRows ?? []).map((r) => r.role));
     const isAdmin = callerRoles.has("admin");
@@ -178,7 +178,6 @@ Deno.serve(async (req) => {
     if (body.hospital_id && !UUID_RE.test(body.hospital_id)) return fail(req, "Invalid hospital reference");
     if (body.department_id && !UUID_RE.test(body.department_id)) return fail(req, "Invalid department reference");
     if (body.staff_id !== undefined) body.staff_id = cap(body.staff_id, 50);
-
     if (isHospitalAdmin && !isAdmin) {
       const callerHospitalId = callerProfile?.hospital_id ?? null;
       if (!callerHospitalId) return fail(req, "Hospital admin must belong to a hospital", 403);
@@ -195,16 +194,19 @@ Deno.serve(async (req) => {
       if (targetRoleSet.has("admin") || targetRoleSet.has("hospital_admin")) {
         return fail(req, "Hospital admins cannot manage admin accounts", 403);
       }
-      if (!targetRoleSet.has("hospital_staff")) return fail(req, "Hospital admins can only manage hospital staff accounts", 403);
-      if (targetProfile.hospital_id !== callerHospitalId) return fail(req, "Hospital admins can only manage staff in their own hospital", 403);
+      if (!targetRoleSet.has("clinic_admin")) {
+        return fail(req, "Hospital admins can only manage department admin accounts", 403);
+      }
+      if (targetProfile.hospital_id !== callerHospitalId) return fail(req, "Hospital admins can only manage admins in their own hospital", 403);
 
-      if (body.role && body.role !== "hospital_staff") return fail(req, "Hospital admins cannot change roles outside hospital staff", 403);
-      if (body.hospital_id && body.hospital_id !== callerHospitalId) return fail(req, "Hospital admins cannot move staff to another hospital", 403);
-      if (body.clinic_id) return fail(req, "Hospital admins cannot assign clinic links", 403);
+      if (body.role && body.role !== "clinic_admin") {
+        return fail(req, "Hospital admins can only assign the department admin role", 403);
+      }
+
       if (body.action === "update_user") {
         const finalDepartmentId = body.department_id ?? targetProfile.department_id ?? null;
         const finalStaffId = body.staff_id !== undefined ? body.staff_id.trim() : (targetProfile.staff_id ?? "");
-        if (!finalDepartmentId) return fail(req, "Department is required");
+        if (!finalDepartmentId) return fail(req, "Department is required for department admins");
         if (!finalStaffId) return fail(req, "Staff ID is required");
         const { data: dep } = await admin
           .from("departments")
@@ -212,48 +214,69 @@ Deno.serve(async (req) => {
           .eq("id", finalDepartmentId)
           .maybeSingle();
         if (!dep || dep.hospital_id !== callerHospitalId) return fail(req, "Department does not belong to your hospital", 403);
+        body.clinic_id = null;
       }
       if (body.action === "approve_user" || body.action === "update_user") {
-        body.role = "hospital_staff";
+        body.role = "clinic_admin";
         body.hospital_id = callerHospitalId;
+        body.clinic_id = null;
       }
     }
 
     if (isClinicAdmin && !isAdmin) {
-      const callerClinicId = callerProfile?.clinic_id ?? null;
-      if (!callerClinicId) return fail(req, "Clinic admin must belong to a clinic", 403);
+      const callerHospitalId = callerProfile?.hospital_id ?? null;
+      const callerDeptId = callerProfile?.department_id ?? null;
+      if (!callerHospitalId || !callerDeptId) return fail(req, "Department admin must be linked to a hospital and a department", 403);
 
       const { data: targetProfile, error: targetProfileError } = await admin
         .from("profiles")
-        .select("clinic_id,staff_id")
+        .select("hospital_id,department_id,staff_id")
         .eq("id", body.user_id)
         .maybeSingle();
       if (targetProfileError || !targetProfile) return fail(req, "Target user not found", 404);
 
       const { data: targetRoles } = await admin.from("user_roles").select("role").eq("user_id", body.user_id);
       const targetRoleSet = new Set((targetRoles ?? []).map((r) => r.role));
-      if (targetRoleSet.has("admin") || targetRoleSet.has("hospital_admin") || targetRoleSet.has("clinic_admin")) {
-        return fail(req, "Clinic admins cannot manage admin accounts", 403);
+      if (!targetRoleSet.has("clinic_staff")) {
+        return fail(req, "Department admins can only manage department staff accounts", 403);
       }
-      if (!targetRoleSet.has("clinic_staff")) return fail(req, "Clinic admins can only manage clinic staff accounts", 403);
-      if (targetProfile.clinic_id !== callerClinicId) return fail(req, "Clinic admins can only manage staff in their own clinic", 403);
+      // Allow managing staff in the same department. Also allow staff whose department_id
+      // is null (created before the department fix) as long as their hospital matches —
+      // the update_user action will correct the department_id automatically.
+      const sameHospital = targetProfile.hospital_id === callerHospitalId;
+      const sameDept = targetProfile.department_id === callerDeptId || targetProfile.department_id === null;
+      if (!sameHospital || !sameDept) {
+        return fail(req, "Department admins can only manage staff in their own department", 403);
+      }
 
-      if (body.role && body.role !== "clinic_staff") return fail(req, "Clinic admins cannot change roles outside clinic staff", 403);
-      if (body.hospital_id) return fail(req, "Clinic admins cannot assign hospitals", 403);
-      if (body.clinic_id && body.clinic_id !== callerClinicId) return fail(req, "Clinic admins cannot move staff to another clinic", 403);
+      if (body.role && body.role !== "clinic_staff") {
+        return fail(req, "Department admins can only assign the department staff role", 403);
+      }
+
       if (body.action === "update_user") {
         const finalStaffId = body.staff_id !== undefined ? body.staff_id.trim() : (targetProfile.staff_id ?? "");
         if (!finalStaffId) return fail(req, "Staff ID is required");
+        body.department_id = callerDeptId;
+        body.clinic_id = null;
       }
       if (body.action === "approve_user" || body.action === "update_user") {
         body.role = "clinic_staff";
-        body.clinic_id = callerClinicId;
+        body.hospital_id = callerHospitalId;
+        body.department_id = callerDeptId;
+        body.clinic_id = null;
       }
     }
 
     if (isAdmin) {
-      if (body.action === "update_user" && body.role && !["hospital_admin", "clinic_admin"].includes(body.role)) {
-        return fail(req, "Main admin can only assign Hospital Admin or Clinic Admin roles", 403);
+      if (body.action === "update_user" && body.role && body.role !== "hospital_admin") {
+        return fail(req, "Main admin can only assign Hospital Admin roles", 403);
+      }
+      if (body.user_id) {
+        const { data: targetRoles } = await admin.from("user_roles").select("role").eq("user_id", body.user_id);
+        const targetRoleSet = new Set((targetRoles ?? []).map((r) => r.role));
+        if (targetRoleSet.size > 0 && !targetRoleSet.has("hospital_admin") && !targetRoleSet.has("admin")) {
+          return fail(req, "Main admin can only manage Hospital Admin accounts", 403);
+        }
       }
     }
 
@@ -274,7 +297,7 @@ Deno.serve(async (req) => {
       const role = body.role;
       const profileOrgUpdate =
         role === "clinic_user" || role === "clinic_admin" || role === "clinic_staff"
-          ? { role, clinic_id: body.clinic_id ?? null, hospital_id: null }
+          ? { role, clinic_id: body.clinic_id ?? null, hospital_id: body.hospital_id ?? null }
           : role === "hospital_admin" || role === "hospital_staff"
             ? { role, hospital_id: body.hospital_id ?? null, clinic_id: null }
             : role === "admin"

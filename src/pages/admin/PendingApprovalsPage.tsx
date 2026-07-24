@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +107,59 @@ export default function PendingApprovalsPage() {
 
   useEffect(() => {
     load();
+  }, []);
+
+  useEffect(() => {
+    const ch = supabase
+      .channel("admin-approvals")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (p) => {
+        const row = p.new as Record<string, unknown>;
+        const status = String(row.status ?? "").toLowerCase();
+        if (status !== "pending_approval") return;
+        const id = row.id != null ? String(row.id) : null;
+        if (!id) return;
+        const incoming: PendingUser = {
+          id,
+          unique_id: row.unique_id != null ? String(row.unique_id) : null,
+          full_name: row.full_name != null ? String(row.full_name) : null,
+          email: row.email != null ? String(row.email) : null,
+          phone: row.phone != null ? String(row.phone) : null,
+          created_at: row.created_at != null ? String(row.created_at) : new Date().toISOString(),
+          clinics: null,
+          hospitals: null,
+          user_roles: [],
+        };
+        setRows((prev) => {
+          if (prev.some((x) => x.id === incoming.id)) return prev;
+          return [incoming, ...prev];
+        });
+        toast.success("New staff registration pending approval");
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (p) => {
+        const row = p.new as Record<string, unknown>;
+        const id = row.id != null ? String(row.id) : null;
+        if (!id) return;
+        const status = String(row.status ?? "").toLowerCase();
+        setRows((prev) => {
+          if (status !== "pending_approval") return prev.filter((x) => x.id !== id);
+          return prev.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  unique_id: row.unique_id != null ? String(row.unique_id) : x.unique_id,
+                  full_name: row.full_name != null ? String(row.full_name) : x.full_name,
+                  email: row.email != null ? String(row.email) : x.email,
+                  phone: row.phone != null ? String(row.phone) : x.phone,
+                  created_at: row.created_at != null ? String(row.created_at) : x.created_at,
+                }
+              : x,
+          );
+        });
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
   }, []);
 
   const filtered = useMemo(() => {

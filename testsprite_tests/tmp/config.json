@@ -1,0 +1,19 @@
+{
+  "status": "commited",
+  "type": "frontend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:8080",
+  "loginUser": "godfred",
+  "loginPassword": "Nino123",
+  "executionArgs": {
+    "projectName": "medconnect-hub",
+    "projectPath": "C:\\Users\\Nino\\Desktop\\HOSPITAL\\medconnect-hub",
+    "testIds": [],
+    "additionalInstruction": "Re-run full frontend suite after fixes for /login alias and auth-loading hardening. Prioritize previously blocked auth and admin route scenarios.",
+    "serverMode": "development",
+    "envs": {
+      "API_KEY": "sk-user-XrIGm_Hmx2U9T4VV5ikFTNsntnnvt-O-uuvxZ6ymrS_rJfB5x3nQuBtXAPt9aPKfN7m2V8k0EmUubh8ZMCvNyfNQvqgwDXj5e9uER0CXUXQbiN3W5hENfj9jgCXXlUQloLM"
+    }
+  },
+  "serverPort": 48034
+}

@@ -83,11 +83,11 @@ export default function ClinicStaffManagement() {
   };
 
   const load = useCallback(async () => {
-    if (!profile?.clinic_id) return;
+    if (!profile?.department_id) return;
     const { data, error } = await supabase
       .from("profiles")
       .select("id, full_name, email, username, phone, status, staff_id")
-      .eq("clinic_id", profile.clinic_id)
+      .eq("department_id", profile.department_id)
       .order("created_at", { ascending: false });
     if (error) {
       toast.error(safeClientError(error));
@@ -102,7 +102,7 @@ export default function ClinicStaffManagement() {
     }
     const staffUserIds = new Set((roleRows ?? []).map((r) => (r as { user_id: string }).user_id));
     setRows(profileRows.filter((u) => staffUserIds.has(u.id)));
-  }, [profile?.clinic_id, profile?.id]);
+  }, [profile?.department_id, profile?.id]);
 
   useEffect(() => {
     void load();
@@ -119,7 +119,7 @@ export default function ClinicStaffManagement() {
   }, [rows, q]);
 
   const createStaff = async () => {
-    if (!profile?.clinic_id) return;
+    if (!profile?.department_id) return;
     const validated = adminCreateUserSchema.safeParse({
       full_name: form.full_name,
       email: form.email,
@@ -129,9 +129,9 @@ export default function ClinicStaffManagement() {
       role: "clinic_staff",
       status: form.status,
       org_mode: "existing",
-      clinic_id: profile.clinic_id,
-      hospital_id: "",
-      department_id: "",
+      clinic_id: "",
+      hospital_id: profile.hospital_id ?? undefined,
+      department_id: profile.department_id,
       staff_id: form.staff_id,
       new_org: undefined,
     });
@@ -151,7 +151,8 @@ export default function ClinicStaffManagement() {
         password: v.password,
         role: "clinic_staff",
         status: v.status,
-        clinic_id: profile.clinic_id,
+        hospital_id: profile.hospital_id ?? "",
+        department_id: profile.department_id,
         staff_id: sanitizeText(v.staff_id ?? "", 50),
       };
       const normalizedEmail = sanitizeOptionalText(v.email || undefined, 320)?.toLowerCase();
@@ -160,7 +161,7 @@ export default function ClinicStaffManagement() {
       const { data, error } = await invokeFn("admin-create-user", payload);
       if (error) throw error;
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
-      toast.success("Clinic staff account created");
+      toast.success("Department staff account created");
       setForm({ full_name: "", email: "", username: "", phone: "", staff_id: "", password: "", status: "active" });
       setOpen(false);
       await load();
@@ -263,9 +264,9 @@ export default function ClinicStaffManagement() {
       phone: edit.phone,
       role: "clinic_staff",
       status: edit.status,
-      clinic_id: profile?.clinic_id ?? "",
-      hospital_id: "",
-      department_id: "",
+      clinic_id: "",
+      hospital_id: profile?.hospital_id ?? "",
+      department_id: profile?.department_id ?? "",
       staff_id: edit.staff_id,
     });
     if (!parsed.success) {
@@ -283,6 +284,8 @@ export default function ClinicStaffManagement() {
         username: sanitizeText(ed.username, 30).toLowerCase(),
         phone: sanitizeOptionalText(ed.phone || undefined, 40) ?? undefined,
         staff_id: sanitizeText(ed.staff_id ?? "", 50),
+        department_id: profile?.department_id,
+        hospital_id: profile?.hospital_id ?? undefined,
         email: sanitizeOptionalText(ed.email || undefined, 320)?.toLowerCase(),
         status: ed.status,
         role: "clinic_staff",
@@ -305,8 +308,8 @@ export default function ClinicStaffManagement() {
     return (
       <Card className="shadow-card">
         <CardContent className="p-6">
-          <h1 className="font-display text-2xl font-bold">Clinic staff</h1>
-          <p className="text-muted-foreground mt-2">Only clinic admins can manage clinic staff accounts.</p>
+          <h1 className="font-display text-2xl font-bold">Department staff</h1>
+          <p className="text-muted-foreground mt-2">Only department admins can manage department staff accounts.</p>
         </CardContent>
       </Card>
     );
@@ -316,8 +319,8 @@ export default function ClinicStaffManagement() {
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-3xl font-bold">Clinic staff</h1>
-          <p className="text-muted-foreground">Create and manage staff accounts for your clinic.</p>
+          <h1 className="font-display text-3xl font-bold">Department staff</h1>
+          <p className="text-muted-foreground">Create and manage staff accounts for your department.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -325,8 +328,8 @@ export default function ClinicStaffManagement() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create clinic staff account</DialogTitle>
-              <DialogDescription>This account will be linked to your clinic automatically.</DialogDescription>
+              <DialogTitle>Create department staff account</DialogTitle>
+              <DialogDescription>This account will be linked to your department automatically.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               <Field label="Full name *"><Input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} /></Field>
@@ -391,8 +394,8 @@ export default function ClinicStaffManagement() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit clinic staff profile</DialogTitle>
-            <DialogDescription>Update account details for this clinic staff member.</DialogDescription>
+            <DialogTitle>Edit department staff profile</DialogTitle>
+            <DialogDescription>Update account details for this department staff member.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <Field label="Full name *"><Input value={edit.full_name} onChange={(e) => setEdit((x) => ({ ...x, full_name: e.target.value }))} /></Field>

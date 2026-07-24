@@ -1,0 +1,695 @@
+[
+  {
+    "id": "TC001",
+    "title": "Clinic user can sign in and reach clinic portal",
+    "description": "Verifies a clinic user can sign in from the authentication page and is routed into the clinic portal shell successfully.",
+    "category": "Portal Authentication",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the clinic portal shell is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC002",
+    "title": "Hospital user can sign in and reach hospital portal",
+    "description": "Verifies a hospital user can sign in and is routed into the hospital portal shell successfully.",
+    "category": "Portal Authentication",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the hospital portal shell is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC003",
+    "title": "Admin user can sign in and reach admin portal",
+    "description": "Verifies an admin user can sign in and is routed into the admin portal shell successfully.",
+    "category": "Portal Authentication",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the admin portal shell is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC004",
+    "title": "Clinic user can create a referral and see it in referral list",
+    "description": "Verifies a clinic user can create a new referral from the referral form and then see the referral appear in the clinic referrals list.",
+    "category": "Clinic Referral Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to view clinic referrals"
+      },
+      {
+        "type": "action",
+        "description": "Click the action to start creating a new referral"
+      },
+      {
+        "type": "action",
+        "description": "Fill out the referral form with valid values"
+      },
+      {
+        "type": "action",
+        "description": "Submit the referral form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the clinic referrals list shows the newly created referral"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC005",
+    "title": "Hospital staff can assign an inbox referral and see it in assigned cases",
+    "description": "Verifies a hospital user can open an inbox referral, assign it to themselves or a teammate, and then see it listed in assigned cases.",
+    "category": "Hospital Case Processing",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open the hospital inbox"
+      },
+      {
+        "type": "action",
+        "description": "Open the first available referral in the inbox list"
+      },
+      {
+        "type": "action",
+        "description": "Assign the referral to yourself"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to view assigned cases"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the assigned cases list includes the case that was just assigned"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC006",
+    "title": "Approve a pending user and see them in the users list",
+    "description": "Verifies an admin can approve a pending user and the user then appears in the users list.",
+    "category": "Administrative Oversight",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the approvals module"
+      },
+      {
+        "type": "action",
+        "description": "Approve the first pending user in the list"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the users module"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the approved user appears in the users list"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC007",
+    "title": "Clinic user can view referral detail and send a message update",
+    "description": "Verifies a clinic user can open a referral from the list, then send a message update that appears in the conversation thread.",
+    "category": "Clinic Referral Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to view clinic referrals"
+      },
+      {
+        "type": "action",
+        "description": "Click the action to start creating a new referral"
+      },
+      {
+        "type": "action",
+        "description": "Fill out the referral form with valid values"
+      },
+      {
+        "type": "action",
+        "description": "Submit the referral form"
+      },
+      {
+        "type": "action",
+        "description": "Click the newly created referral in the referrals list"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open clinic messages"
+      },
+      {
+        "type": "action",
+        "description": "Fill Clinic update message 001 into the message composer"
+      },
+      {
+        "type": "action",
+        "description": "Send the message"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the conversation thread displays Clinic update message 001"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC008",
+    "title": "Change a role’s permissions and see an audit entry",
+    "description": "Verifies an admin can update role permissions and the change is recorded in the audit log.",
+    "category": "Administrative Oversight",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the roles module"
+      },
+      {
+        "type": "action",
+        "description": "Select a role to edit"
+      },
+      {
+        "type": "action",
+        "description": "Change at least one permission setting"
+      },
+      {
+        "type": "action",
+        "description": "Save the role changes"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the audit module"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a recent audit entry reflects the role or permission change"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC009",
+    "title": "Hospital staff can provide feedback and message the clinic",
+    "description": "Verifies a hospital user can select a case in the feedback center, save feedback, and then send a message to the clinic about the feedback.",
+    "category": "Hospital Case Processing",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open the feedback center"
+      },
+      {
+        "type": "action",
+        "description": "Select a case to provide feedback"
+      },
+      {
+        "type": "action",
+        "description": "Fill Feedback note 001 into the feedback field"
+      },
+      {
+        "type": "action",
+        "description": "Save the feedback"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open hospital messages"
+      },
+      {
+        "type": "action",
+        "description": "Fill Feedback note 001 into the message composer"
+      },
+      {
+        "type": "action",
+        "description": "Send the message"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the conversation thread displays Feedback note 001"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC010",
+    "title": "View admin dashboard modules from the admin portal shell",
+    "description": "Verifies an admin can access the admin portal and see navigation to core governance modules.",
+    "category": "Administrative Oversight",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the admin portal"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the admin dashboard shows navigation entries for approvals, users, roles, and audit"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC011",
+    "title": "Update a clinic record and verify hospitals module is accessible after",
+    "description": "Verifies an admin can edit and save a clinic record and then access the hospitals module successfully.",
+    "category": "Administrative Oversight",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the clinics module"
+      },
+      {
+        "type": "action",
+        "description": "Open the first clinic record from the list"
+      },
+      {
+        "type": "action",
+        "description": "Update a clinic metadata field with a new value"
+      },
+      {
+        "type": "action",
+        "description": "Save the clinic changes"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the hospitals module"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the hospitals list is displayed"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC012",
+    "title": "Users list supports basic search/filtering to find a user",
+    "description": "Verifies an admin can use on-page filtering or search to narrow the users list.",
+    "category": "Administrative Oversight",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the users module"
+      },
+      {
+        "type": "action",
+        "description": "Fill a partial identifier into the user search or filter field"
+      },
+      {
+        "type": "action",
+        "description": "Wait for the list to update"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the users list is narrowed to matching results"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC013",
+    "title": "Invalid credentials are rejected",
+    "description": "Verifies that submitting the sign-in form with an incorrect password shows an invalid-credentials error and does not sign the user in.",
+    "category": "Portal Authentication",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill invalid-user@example.com into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill wrong-password into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify an invalid credentials error is visible"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC014",
+    "title": "Referral form enforces required fields",
+    "description": "Verifies that attempting to submit a new referral with required fields missing shows inline validation errors and does not create the referral.",
+    "category": "Clinic Referral Management",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click the action to start creating a new referral"
+      },
+      {
+        "type": "action",
+        "description": "Submit the referral form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify required-field validation errors are visible on the referral form"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC015",
+    "title": "Role editing requires saving before changes take effect in the UI",
+    "description": "Verifies unsaved role changes are not persisted until the admin saves and the UI reflects the saved state.",
+    "category": "Administrative Oversight",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the roles module"
+      },
+      {
+        "type": "action",
+        "description": "Select a role to edit"
+      },
+      {
+        "type": "action",
+        "description": "Change at least one permission setting"
+      },
+      {
+        "type": "action",
+        "description": "Navigate away by clicking to open the users module"
+      },
+      {
+        "type": "action",
+        "description": "Return to the roles module"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the role editor does not show the unsaved permission change as applied"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC016",
+    "title": "Approvals queue supports empty state without breaking navigation",
+    "description": "Verifies the approvals page handles no pending users by showing an empty state and remains usable.",
+    "category": "Administrative Oversight",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_USER}} into the identifier field"
+      },
+      {
+        "type": "action",
+        "description": "Fill {{LOGIN_PASSWORD}} into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the sign-in form"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the approvals module"
+      },
+      {
+        "type": "action",
+        "description": "Wait for the approvals list to finish loading"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify either a list of pending users is displayed or an empty state message is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click to open the users module"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the users list is displayed"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC017",
+    "title": "Password visibility toggle changes password masking",
+    "description": "Verifies the password visibility control toggles the password field between masked and unmasked states.",
+    "category": "Portal Authentication",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /auth"
+      },
+      {
+        "type": "action",
+        "description": "Fill demo-password-123 into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the password visibility toggle"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the password value is visible in the password field"
+      }
+    ],
+    "priority": "Low"
+  }
+]

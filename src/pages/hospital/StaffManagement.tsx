@@ -27,8 +27,10 @@ interface StaffRow {
   status: string;
   staff_id: string | null;
   department_id: string | null;
+  clinic_id: string | null;
   departments: { name: string } | null;
-  user_roles?: { role: string }[];
+  clinics: { name: string } | null;
+  staff_role?: string;
 }
 
 interface DepartmentOption {
@@ -57,6 +59,7 @@ export default function StaffManagement() {
     phone: "",
     staff_id: "",
     department_id: "",
+    role: "clinic_admin" as "clinic_admin" | "hospital_staff" | "clinic_staff",
     status: "active" as StaffStatus,
   });
 
@@ -68,6 +71,7 @@ export default function StaffManagement() {
     staff_id: "",
     department_id: "",
     password: "",
+    role: "clinic_admin" as "clinic_admin" | "hospital_staff" | "clinic_staff",
     status: "active" as StaffStatus,
   });
 
@@ -102,7 +106,7 @@ export default function StaffManagement() {
     if (!profile?.hospital_id) return;
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, full_name, email, username, phone, status, staff_id, department_id, departments(name)")
+      .select("id, full_name, email, username, phone, status, staff_id, department_id, clinic_id, clinics(name), departments(name)")
       .eq("hospital_id", profile.hospital_id)
       .order("created_at", { ascending: false });
     if (error) {
@@ -113,15 +117,16 @@ export default function StaffManagement() {
     const { data: roleRows, error: roleError } = await supabase
       .from("user_roles")
       .select("user_id, role")
-      .eq("role", "hospital_staff");
+      .in("role", ["clinic_admin", "clinic_staff"]);
     if (roleError) {
-      // Fall back to profile attributes if role join/policy is unavailable.
       const fallback = profileRows.filter((u) => !!u.staff_id || !!u.department_id);
       setRows(fallback);
     } else {
-      const staffUserIds = new Set((roleRows ?? []).map((r) => (r as { user_id: string }).user_id));
-      const staffOnly = profileRows.filter((u) => staffUserIds.has(u.id));
-      setRows(staffOnly);
+      const rolesMap = new Map((roleRows ?? []).map((r) => [r.user_id, r.role]));
+      const staffOnly = profileRows
+        .filter((u) => rolesMap.has(u.id))
+        .map((u) => ({ ...u, staff_role: rolesMap.get(u.id) }));
+      setRows(staffOnly as unknown as StaffRow[]);
     }
     const { data: depData, error: depError } = await supabase
       .from("departments")
@@ -147,9 +152,14 @@ export default function StaffManagement() {
     const term = sanitizeText(q, 200).toLowerCase();
     if (!term) return rows;
     return rows.filter((u) =>
-      [u.full_name ?? "", u.email ?? "", u.username ?? "", u.phone ?? "", u.staff_id ?? "", u.departments?.name ?? ""].some((v) =>
-        v.toLowerCase().includes(term),
-      ),
+      [
+        u.full_name ?? "",
+        u.email ?? "",
+        u.username ?? "",
+        u.phone ?? "",
+        u.staff_id ?? "",
+        u.departments?.name ?? "",
+      ].some((v) => v.toLowerCase().includes(term)),
     );
   }, [rows, q]);
 
@@ -173,13 +183,13 @@ export default function StaffManagement() {
       username: form.username,
       phone: form.phone,
       password: form.password,
-      role: "hospital_staff",
+      role: form.role,
       status: form.status,
       org_mode: "existing",
       clinic_id: "",
       hospital_id: profile.hospital_id,
-        department_id: form.department_id,
-        staff_id: form.staff_id,
+      department_id: form.department_id,
+      staff_id: form.staff_id,
       new_org: undefined,
     });
     if (!validated.success) {
@@ -196,24 +206,21 @@ export default function StaffManagement() {
         username: sanitizeText(v.username, 30).toLowerCase(),
         phone: sanitizeOptionalText(v.phone || undefined, 40) ?? undefined,
         password: v.password,
-        role: "hospital_staff",
+        role: "clinic_admin",
         status: v.status,
         hospital_id: profile.hospital_id,
-        department_id: form.department_id,
+        clinic_id: undefined,
+        department_id: v.department_id,
         staff_id: sanitizeText(v.staff_id ?? "", 50),
       };
       const normalizedEmail = sanitizeOptionalText(v.email || undefined, 320)?.toLowerCase();
       const normalizedUsername = payload.username;
       if (normalizedEmail) payload.email = normalizedEmail;
 
-      // Pre-check common uniqueness conflicts so admins get instant feedback
-      // before we invoke the Edge Function.
-      const orFilters = [`username.eq.${normalizedUsername}`];
-      if (normalizedEmail) orFilters.push(`email.eq.${normalizedEmail}`);
       const { data: existing, error: existingError } = await supabase
         .from("profiles")
         .select("id, username, email")
-        .or(orFilters.join(","))
+        .or(`username.eq.${normalizedUsername}${normalizedEmail ? `,email.eq.${normalizedEmail}` : ""}`)
         .limit(1);
       if (existingError) throw existingError;
       const match = (existing ?? [])[0] as { username?: string | null; email?: string | null } | undefined;
@@ -229,8 +236,19 @@ export default function StaffManagement() {
       const { data, error } = await invokeFn("admin-create-user", payload);
       if (error) throw error;
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
-      toast.success("Hospital staff account created");
-      setForm({ full_name: "", email: "", username: "", phone: "", staff_id: "", department_id: "", password: "", status: "active" });
+      toast.success("Department Admin account created");
+      setForm({
+        full_name: "",
+        email: "",
+        username: "",
+        phone: "",
+        staff_id: "",
+        department_id: "",
+        clinic_id: "",
+        password: "",
+        role: "clinic_admin",
+        status: "active",
+      });
       setOpen(false);
       await load();
     } catch (e) {
@@ -249,7 +267,7 @@ export default function StaffManagement() {
         action: "update_user",
         user_id: user.id,
         status,
-        role: "hospital_staff",
+        role: "clinic_admin",
       });
       if (error) throw error;
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
@@ -322,6 +340,7 @@ export default function StaffManagement() {
       phone: u.phone ?? "",
       staff_id: u.staff_id ?? "",
       department_id: u.department_id ?? "",
+      role: "clinic_admin",
       status: (u.status as StaffStatus) ?? "active",
     });
     setEditOpen(true);
@@ -334,7 +353,7 @@ export default function StaffManagement() {
       email: edit.email,
       username: edit.username,
       phone: edit.phone,
-      role: "hospital_staff",
+      role: edit.role,
       status: edit.status,
       clinic_id: "",
       hospital_id: profile?.hospital_id ?? "",
@@ -357,9 +376,11 @@ export default function StaffManagement() {
         phone: sanitizeOptionalText(ed.phone || undefined, 40) ?? undefined,
         staff_id: sanitizeText(ed.staff_id ?? "", 50),
         department_id: ed.department_id,
+        clinic_id: undefined,
+        hospital_id: profile?.hospital_id,
         email: sanitizeOptionalText(ed.email || undefined, 320)?.toLowerCase(),
         status: ed.status,
-        role: "hospital_staff",
+        role: ed.role,
       });
       if (error) throw error;
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
@@ -379,8 +400,8 @@ export default function StaffManagement() {
     return (
       <Card className="shadow-card">
         <CardContent className="p-6">
-          <h1 className="font-display text-2xl font-bold">Hospital staff</h1>
-          <p className="text-muted-foreground mt-2">Only hospital admins can manage staff accounts.</p>
+          <h1 className="font-display text-2xl font-bold">Department Admins</h1>
+          <p className="text-muted-foreground mt-2">Only hospital admins can manage department admin accounts.</p>
         </CardContent>
       </Card>
     );
@@ -390,18 +411,18 @@ export default function StaffManagement() {
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-3xl font-bold">Hospital staff</h1>
-          <p className="text-muted-foreground">Create and manage staff accounts for your hospital.</p>
+          <h1 className="font-display text-3xl font-bold">Department Admins</h1>
+          <p className="text-muted-foreground">Create and manage department admin accounts for your hospital.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button variant="hero">
-              <Plus className="h-4 w-4" /> Add staff
+              <Plus className="h-4 w-4" /> Add Department Admin
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create hospital staff account</DialogTitle>
+              <DialogTitle>Create Department Admin account</DialogTitle>
               <DialogDescription>This account will be linked to your hospital automatically.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
@@ -429,6 +450,9 @@ export default function StaffManagement() {
                 <Label>Staff ID *</Label>
                 <Input value={form.staff_id} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))} />
               </div>
+
+
+
               <div>
                 <Label>Department *</Label>
                 <Select value={form.department_id} onValueChange={(v) => setForm((f) => ({ ...f, department_id: v }))}>
@@ -483,7 +507,7 @@ export default function StaffManagement() {
                 </Select>
               </div>
               <Button onClick={createStaff} variant="hero" className="w-full" disabled={busy || !canSubmitCreate}>
-                {busy ? "Creating..." : "Create staff"}
+                {busy ? "Creating..." : "Create Department Admin"}
               </Button>
             </div>
           </DialogContent>
@@ -504,6 +528,7 @@ export default function StaffManagement() {
               <tr>
                 <th className="text-left px-5 py-3">Name</th>
                 <th className="text-left px-5 py-3">Staff ID</th>
+                <th className="text-left px-5 py-3">Role</th>
                 <th className="text-left px-5 py-3">Department</th>
                 <th className="text-left px-5 py-3">Username</th>
                 <th className="text-left px-5 py-3">Email</th>
@@ -517,7 +542,12 @@ export default function StaffManagement() {
                 <tr key={u.id} className="border-b hover:bg-secondary/30">
                   <td className="px-5 py-3 font-medium">{u.full_name ?? "—"}</td>
                   <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{u.staff_id ?? "—"}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{u.departments?.name ?? "—"}</td>
+                  <td className="px-5 py-3 text-muted-foreground capitalize">
+                    Department Admin
+                  </td>
+                  <td className="px-5 py-3 text-muted-foreground">
+                    {u.departments?.name ?? "—"}
+                  </td>
                   <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{u.username ?? "—"}</td>
                   <td className="px-5 py-3 text-muted-foreground">{u.email ?? "—"}</td>
                   <td className="px-5 py-3 text-muted-foreground">{u.phone ?? "—"}</td>
@@ -574,7 +604,7 @@ export default function StaffManagement() {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="text-center py-10 text-muted-foreground">
-                    No hospital staff found.
+                    No department admins found.
                   </td>
                 </tr>
               )}
@@ -586,8 +616,8 @@ export default function StaffManagement() {
       <Dialog open={resetOpen} onOpenChange={setResetOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reset staff password</DialogTitle>
-            <DialogDescription>Set a temporary password for this staff account.</DialogDescription>
+            <DialogTitle>Reset Department Admin password</DialogTitle>
+            <DialogDescription>Set a temporary password for this department admin account.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -604,8 +634,8 @@ export default function StaffManagement() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit staff profile</DialogTitle>
-            <DialogDescription>Update account details for this hospital staff member.</DialogDescription>
+            <DialogTitle>Edit Department Admin profile</DialogTitle>
+            <DialogDescription>Update account details for this department admin.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -632,21 +662,22 @@ export default function StaffManagement() {
               <Label>Staff ID *</Label>
               <Input value={edit.staff_id} onChange={(e) => setEdit((x) => ({ ...x, staff_id: e.target.value }))} />
             </div>
-            <div>
-              <Label>Department *</Label>
-              <Select value={edit.department_id} onValueChange={(v) => setEdit((x) => ({ ...x, department_id: v }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
+             <div>
+               <Label>Department *</Label>
+               <Select value={edit.department_id} onValueChange={(v) => setEdit((x) => ({ ...x, department_id: v }))}>
+                 <SelectTrigger>
+                   <SelectValue placeholder="Select department" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   {departments.map((d) => (
+                     <SelectItem key={d.id} value={d.id}>
+                       {d.name}
+                     </SelectItem>
+                   ))}
+                 </SelectContent>
+               </Select>
+             </div>
             <div>
               <Label>Status</Label>
               <Select value={edit.status} onValueChange={(v) => setEdit((x) => ({ ...x, status: v as StaffStatus }))}>

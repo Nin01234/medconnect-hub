@@ -1,0 +1,197 @@
+version: "2"
+type: frontend
+tech_stack:
+  - TypeScript
+  - React
+  - Vite
+  - Tailwind CSS
+  - React Router
+  - TanStack Query
+  - Supabase
+routes:
+  - path: /
+    file: src/pages/Landing.tsx
+    auth_required: false
+    description: Landing page for MedConnect Hub.
+  - path: /auth
+    file: src/pages/Auth.tsx
+    auth_required: false
+    description: Sign-in page for portal access.
+  - path: /terms
+    file: src/pages/Terms.tsx
+    auth_required: false
+    description: Terms and conditions page.
+  - path: /portal
+    file: src/pages/PortalRouter.tsx
+    auth_required: true
+    description: Role-aware redirect entry after login.
+  - path: /clinic
+    file: src/layouts/ClinicLayout.tsx
+    auth_required: true
+    description: Clinic user portal shell.
+  - path: /clinic/referrals/new
+    file: src/pages/clinic/CreateReferral.tsx
+    auth_required: true
+    description: Create a new patient referral.
+  - path: /clinic/referrals
+    file: src/pages/clinic/MyReferrals.tsx
+    auth_required: true
+    description: List clinic referrals.
+  - path: /clinic/referrals/:id
+    file: src/pages/ReferralDetail.tsx
+    auth_required: true
+    description: Referral detail for clinic workflow.
+  - path: /clinic/patients/:patientId
+    file: src/pages/PatientReferralHistory.tsx
+    auth_required: true
+    description: Patient referral history view for clinic.
+  - path: /clinic/messages
+    file: src/pages/clinic/ClinicMessages.tsx
+    auth_required: true
+    description: Clinic messaging center.
+  - path: /clinic/reset-password
+    file: src/pages/portal/ResetPasswordPage.tsx
+    auth_required: true
+    description: Password reset flow for logged-in clinic users.
+  - path: /hospital
+    file: src/layouts/HospitalLayout.tsx
+    auth_required: true
+    description: Hospital portal shell.
+  - path: /hospital/inbox
+    file: src/pages/hospital/HospitalInbox.tsx
+    auth_required: true
+    description: Hospital referral inbox.
+  - path: /hospital/referrals/:id/review
+    file: src/pages/ReferralDetail.tsx
+    auth_required: true
+    description: Referral review page for hospital team.
+  - path: /hospital/patients/:patientId
+    file: src/pages/PatientReferralHistory.tsx
+    auth_required: true
+    description: Patient referral history for hospital staff.
+  - path: /hospital/assigned
+    file: src/pages/hospital/AssignedCases.tsx
+    auth_required: true
+    description: Assigned cases dashboard.
+  - path: /hospital/feedback
+    file: src/pages/hospital/FeedbackCenter.tsx
+    auth_required: true
+    description: Feedback and follow-up center.
+  - path: /hospital/departments
+    file: src/pages/hospital/Departments.tsx
+    auth_required: true
+    description: Department management for privileged roles.
+  - path: /hospital/staff
+    file: src/pages/hospital/StaffManagement.tsx
+    auth_required: true
+    description: Staff management page.
+  - path: /hospital/messages
+    file: src/pages/hospital/HospitalMessages.tsx
+    auth_required: true
+    description: Hospital messaging center.
+  - path: /hospital/reset-password
+    file: src/pages/portal/ResetPasswordPage.tsx
+    auth_required: true
+    description: Password reset flow for logged-in hospital users.
+  - path: /admin
+    file: src/layouts/AdminLayout.tsx
+    auth_required: true
+    description: Admin portal shell.
+  - path: /admin/users
+    file: src/pages/admin/UsersPage.tsx
+    auth_required: true
+    description: User management page.
+  - path: /admin/approvals
+    file: src/pages/admin/PendingApprovalsPage.tsx
+    auth_required: true
+    description: Pending user approvals queue.
+  - path: /admin/clinics
+    file: src/pages/admin/ClinicsPage.tsx
+    auth_required: true
+    description: Clinics management page.
+  - path: /admin/hospitals
+    file: src/pages/admin/HospitalsPage.tsx
+    auth_required: true
+    description: Hospitals management page.
+  - path: /admin/roles
+    file: src/pages/admin/RolesPage.tsx
+    auth_required: true
+    description: Role configuration page.
+  - path: /admin/audit
+    file: src/pages/admin/AuditPage.tsx
+    auth_required: true
+    description: Audit log view.
+features:
+  - name: Portal Authentication
+    description: Users sign in with email or username and are routed to the appropriate portal.
+    files:
+      - src/pages/Auth.tsx
+      - src/context/AuthContext.tsx
+      - src/pages/PortalRouter.tsx
+    entry_route: /auth
+    user_interactions:
+      - Enter email or username in the identifier field.
+      - Enter password and optionally toggle visibility.
+      - Submit the sign-in form.
+      - Land in role-specific portal after successful authentication.
+    api_calls:
+      - method: RPC
+        endpoint: supabase.rpc(resolve_login_identifier)
+      - method: POST
+        endpoint: supabase.auth.signInWithPassword
+    auth_required: false
+  - name: Clinic Referral Management
+    description: Clinic users create referrals, review referral history, and communicate with hospital teams.
+    files:
+      - src/pages/clinic/CreateReferral.tsx
+      - src/pages/clinic/MyReferrals.tsx
+      - src/pages/ReferralDetail.tsx
+      - src/pages/clinic/ClinicMessages.tsx
+    entry_route: /clinic
+    user_interactions:
+      - Open the clinic dashboard after login.
+      - Create a new referral from the referral form.
+      - Open existing referrals and patient history records.
+      - Exchange updates in clinic messages.
+    api_calls:
+      - method: Supabase
+        endpoint: supabase client queries and mutations for referral workflow
+    auth_required: true
+  - name: Hospital Case Processing
+    description: Hospital staff triage inbox referrals, manage assigned cases, and coordinate feedback.
+    files:
+      - src/pages/hospital/HospitalInbox.tsx
+      - src/pages/hospital/AssignedCases.tsx
+      - src/pages/hospital/FeedbackCenter.tsx
+      - src/pages/hospital/StaffManagement.tsx
+    entry_route: /hospital
+    user_interactions:
+      - Review incoming referrals in hospital inbox.
+      - Open and review referral details.
+      - Track assigned cases and provide feedback.
+      - Manage staff and department data based on role.
+    api_calls:
+      - method: Supabase
+        endpoint: supabase client queries and mutations for hospital workflow
+    auth_required: true
+  - name: Administrative Oversight
+    description: Admins manage users, organizations, roles, approvals, and audit visibility.
+    files:
+      - src/pages/admin/UsersPage.tsx
+      - src/pages/admin/PendingApprovalsPage.tsx
+      - src/pages/admin/RolesPage.tsx
+      - src/pages/admin/AuditPage.tsx
+    entry_route: /admin
+    user_interactions:
+      - Browse admin dashboard modules.
+      - Approve pending users and manage role assignments.
+      - Update clinic and hospital entities.
+      - Review audit entries for governance.
+    api_calls:
+      - method: Supabase
+        endpoint: supabase client queries and mutations for admin workflow
+    auth_required: true
+known_limitations:
+  - issue: App is currently running in Vite development mode.
+    location: runtime environment
+    impact: Automated frontend test execution is capped to high-priority scenarios to reduce dev server instability.

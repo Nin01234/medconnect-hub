@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { hasRole } from "@/context/authRoles";
 import { Button } from "@/components/ui/button";
 import { LayoutDashboard, Inbox, ClipboardList, MessageSquare, LogOut, Activity, Users, Menu, MessageCircleHeart, PanelLeft, PanelLeftClose, KeyRound, Building2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -11,11 +12,21 @@ import { PortalSearch } from "@/components/PortalSearch";
 const links = [
   { to: "/hospital", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/hospital/inbox", label: "Referral Inbox", icon: Inbox },
+  { to: "/hospital/referrals/new", label: "Create Referral", icon: Activity },
+  { to: "/hospital/referrals", label: "Sent Referrals", icon: ClipboardList },
   { to: "/hospital/assigned", label: "Assigned Cases", icon: ClipboardList },
+  { to: "/hospital/doctor", label: "My referrals", icon: ClipboardList },
   { to: "/hospital/feedback", label: "Feedback Center", icon: MessageCircleHeart },
   { to: "/hospital/departments", label: "Departments", icon: Building2 },
   { to: "/hospital/staff", label: "Staff Accounts", icon: Users },
   { to: "/hospital/messages", label: "Messages", icon: MessageSquare },
+  { to: "/hospital/reset-password", label: "Reset password", icon: KeyRound },
+];
+
+const doctorPortalLinks = [
+  { to: "/hospital/doctor", label: "My referrals", icon: ClipboardList, end: true },
+  { to: "/hospital/referrals/new", label: "Create Referral", icon: Activity },
+  { to: "/hospital/referrals", label: "Sent Referrals", icon: ClipboardList },
   { to: "/hospital/reset-password", label: "Reset password", icon: KeyRound },
 ];
 
@@ -38,9 +49,14 @@ export default function HospitalLayout() {
     };
   }, [isLg, mobileOpen]);
 
-  const navLinks = roles.includes("hospital_admin") || roles.includes("admin")
-    ? links
-    : links.filter((l) => l.to !== "/hospital/staff" && l.to !== "/hospital/departments");
+  const isDoctorPortal =
+    hasRole(roles, "doctor") && !hasRole(roles, "hospital_admin", "hospital_staff", "admin");
+
+  const navLinks = isDoctorPortal
+    ? doctorPortalLinks
+    : roles.includes("hospital_admin") || roles.includes("admin")
+      ? links.filter((l) => l.to !== "/hospital/doctor" && l.to !== "/hospital/referrals/new" && l.to !== "/hospital/referrals")
+      : links.filter((l) => l.to !== "/hospital/staff" && l.to !== "/hospital/departments" && l.to !== "/hospital/doctor");
 
   return (
     <div className="min-h-screen min-h-[100dvh] bg-background">
@@ -83,7 +99,9 @@ export default function HospitalLayout() {
             </div>
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium leading-tight">{profile?.full_name ?? "—"}</p>
-              <p className="text-xs text-muted-foreground leading-tight">{roles.includes("hospital_admin") ? "Hospital Admin" : "Hospital Staff"}</p>
+              <p className="text-xs text-muted-foreground leading-tight">
+                {isDoctorPortal ? "Doctor" : roles.includes("hospital_admin") ? "Hospital Admin" : "Hospital Staff"}
+              </p>
             </div>
             <Button variant="ghost" size="icon" onClick={() => signOut().then(() => nav("/"))} aria-label="Sign out"><LogOut className="h-4 w-4" /></Button>
           </div>

@@ -33,8 +33,13 @@ export default function PortalRouter() {
     if (!profile?.hospital_id) return <NotLinked role="hospital_staff" />;
     return <Navigate to="/hospital" replace />;
   }
+  if (hasRole(roles, "doctor") && !hasRole(roles, "hospital_staff")) {
+    if (!profile?.hospital_id) return <NotLinked role="doctor" />;
+    return <Navigate to="/hospital/doctor" replace />;
+  }
   if (hasRole(roles, "clinic_user", "clinic_admin", "clinic_staff")) {
-    if (!profile?.clinic_id) return <NotLinked role="clinic_user" />;
+    const isDepartmentLinked = hasRole(roles, "clinic_admin", "clinic_staff") && !!profile?.department_id;
+    if (!profile?.clinic_id && !isDepartmentLinked) return <NotLinked role="clinic_user" />;
     return <Navigate to="/clinic" replace />;
   }
   return <NotLinked role={roles[0] as AppRole | undefined} />;
@@ -87,6 +92,8 @@ function NotLinked({ role }: { role?: AppRole }) {
         ? "Hospital Admin"
         : role === "hospital_staff"
           ? "Hospital Staff"
+          : role === "doctor"
+            ? "Doctor"
           : role === "admin"
             ? "Admin"
             : "your role";
