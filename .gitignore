@@ -28,4 +28,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Lighthouse & test artifacts
+.lighthouse/
+reports/
+test-results/
+testsprite_tests/tmp/
+lighthouse-report.json
+scripts/capture-hospital-debug.mjs
 .vercel
