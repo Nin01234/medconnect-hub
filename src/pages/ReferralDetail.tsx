@@ -434,11 +434,18 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
         <Button variant="ghost" size="sm" onClick={() => nav(-1)}><ArrowLeft className="h-4 w-4" /> Back</Button>
         <div className="flex items-center gap-2 flex-wrap">
           {ref.patient_id ? (
-            <Button variant="outline" size="sm" asChild>
-              <Link to={isHospital ? `/hospital/patients/${ref.patient_id}` : `/clinic/patients/${ref.patient_id}`}>
-                <History className="h-4 w-4" /> Patient referral history
-              </Link>
-            </Button>
+            <>
+              <Button variant="outline" size="sm" asChild>
+                <Link to={isHospital ? `/hospital/patients/${ref.patient_id}` : `/clinic/patients/${ref.patient_id}`}>
+                  <History className="h-4 w-4 mr-1" /> History
+                </Link>
+              </Button>
+              <Button variant="hero" size="sm" asChild>
+                <Link to={isHospital ? `/hospital/patients/${ref.patient_id}/journey` : `/clinic/patients/${ref.patient_id}/journey`}>
+                  <History className="h-4 w-4 mr-1" /> Patient Journey
+                </Link>
+              </Button>
+            </>
           ) : null}
           <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
         </div>

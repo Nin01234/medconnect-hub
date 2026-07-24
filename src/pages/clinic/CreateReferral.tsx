@@ -10,10 +10,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Sparkles, AlertTriangle, FileCheck, Bookmark } from "lucide-react";
 import { createReferralSchema } from "@/lib/validation";
 import { sanitizeFileName, sanitizeText } from "@/lib/sanitize";
 import { safeClientError } from "@/lib/safeError";
+import { getDepartmentRecommendations, Recommendation } from "@/lib/recommendationEngine";
+import { getReferralTemplates, saveUserTemplate, TemplateItem } from "@/lib/referralTemplates";
+import { Badge } from "@/components/ui/badge";
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = new Set([
@@ -41,6 +44,17 @@ export default function CreateReferral() {
     referral_reason: "", department_id: "", notes: "",
   });
 
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [possibleDuplicate, setPossibleDuplicate] = useState<{
+    id: string;
+    referral_number: string | null;
+    status: string;
+    created_at: string;
+    department_name?: string;
+  } | null>(null);
+  const [bypassDuplicate, setBypassDuplicate] = useState(false);
+  const [templates] = useState<TemplateItem[]>(getReferralTemplates());
+
   useEffect(() => {
     if (profile?.hospital_id) {
       supabase
@@ -54,6 +68,55 @@ export default function CreateReferral() {
   }, [profile?.hospital_id]);
 
   const update = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  // Smart Department Recommendation Effect
+  useEffect(() => {
+    const combined = `${form.diagnosis} ${form.symptoms} ${form.referral_reason}`;
+    const recs = getDepartmentRecommendations(combined, departments);
+    setRecommendations(recs);
+  }, [form.diagnosis, form.symptoms, form.referral_reason, departments]);
+
+  // Duplicate Referral Detection Effect
+  useEffect(() => {
+    if (!form.patient_name.trim() || form.patient_name.trim().length < 3) {
+      setPossibleDuplicate(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from("referrals")
+        .select("id, referral_number, status, created_at, departments(name)")
+        .ilike("patient_name", `%${form.patient_name.trim()}%`)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (data && data.length > 0) {
+        const found = data[0];
+        setPossibleDuplicate({
+          id: found.id,
+          referral_number: found.referral_number,
+          status: found.status,
+          created_at: found.created_at,
+          department_name: (found.departments as { name?: string })?.name,
+        });
+      } else {
+        setPossibleDuplicate(null);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [form.patient_name]);
+
+  const applyTemplate = (tpl: TemplateItem) => {
+    setForm((prev) => ({
+      ...prev,
+      referral_reason: tpl.referral_reason || prev.referral_reason,
+      diagnosis: tpl.diagnosis || prev.diagnosis,
+      notes: tpl.notes ? `${prev.notes ? prev.notes + "\n" : ""}${tpl.notes}` : prev.notes,
+      urgency_level: tpl.urgency_level || prev.urgency_level,
+      department_id: tpl.department_id || prev.department_id,
+    }));
+    toast.success(`Template "${tpl.title}" applied`);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,10 +272,61 @@ export default function CreateReferral() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="font-display text-3xl font-bold">New Referral</h1>
-        <p className="text-muted-foreground">Complete all sections — referrals are saved as structured records.</p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-bold">New Referral</h1>
+          <p className="text-muted-foreground">Complete all sections — referrals are saved as structured records.</p>
+        </div>
+
+        {/* Referral Template Selector */}
+        <div className="flex items-center gap-2">
+          <Select onValueChange={(val) => {
+            const chosen = templates.find((t) => t.id === val);
+            if (chosen) applyTemplate(chosen);
+          }}>
+            <SelectTrigger className="w-[220px]">
+              <Bookmark className="h-4 w-4 mr-2 text-primary" />
+              <SelectValue placeholder="Use Referral Template" />
+            </SelectTrigger>
+            <SelectContent>
+              {templates.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+
+      {/* Duplicate Referral Warning Banner */}
+      {possibleDuplicate && !bypassDuplicate && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="flex-1 text-sm">
+              <p className="font-semibold text-amber-600 dark:text-amber-300">
+                Possible Duplicate Referral Detected
+              </p>
+              <p className="text-muted-foreground mt-1">
+                A referral already exists for patient matching <span className="font-semibold text-foreground">"{form.patient_name}"</span>.
+                Referral #{possibleDuplicate.referral_number ?? "—"} created on {new Date(possibleDuplicate.created_at).toLocaleDateString()} (Status: <span className="capitalize font-medium">{possibleDuplicate.status}</span>).
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 pl-8">
+            <Button size="sm" variant="outline" onClick={() => window.open(`/clinic/referrals/${possibleDuplicate.id}`, "_blank")}>
+              Open Existing Referral
+            </Button>
+            <Button size="sm" variant="hero" onClick={() => setBypassDuplicate(true)}>
+              Continue Anyway
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setForm((p) => ({ ...p, patient_name: "" }))}>
+              Cancel Creation
+            </Button>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={submit} className="space-y-6">
         <Section title="Patient Information">
@@ -266,6 +380,31 @@ export default function CreateReferral() {
                   {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+
+              {/* Smart Department Recommendation UI */}
+              {recommendations.length > 0 && (
+                <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-primary uppercase tracking-wider">
+                    <Sparkles className="h-3.5 w-3.5" /> Smart Recommendations
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {recommendations.map((rec) => (
+                      <button
+                        key={rec.departmentId}
+                        type="button"
+                        onClick={() => update("department_id", rec.departmentId)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          form.department_id === rec.departmentId
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background hover:bg-secondary text-foreground border-border"
+                        }`}
+                      >
+                        {rec.departmentName} <span className="font-mono opacity-80">({rec.confidence}%)</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </Field>
           </div>
         </Section>

@@ -195,6 +195,14 @@ export default function ClinicDashboard() {
               <p className="text-sm text-muted-foreground">Facility:</p>
               <p className="text-lg font-extrabold tracking-tight text-foreground">{displayName || (isDeptLinked ? "Department name not set" : "Clinic name not set")}</p>
             </div>
+            {profile?.full_name && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-foreground">User: {profile.full_name}</span>
+                <Badge variant="outline" className="capitalize text-xs font-normal border-primary/40 bg-primary/10 text-primary">
+                  {(profile.role ?? "staff").replace("_", " ")}
+                </Badge>
+              </div>
+            )}
             <p className="text-muted-foreground mt-2 min-h-6 transition-all duration-300">
               {liveHighlights[highlightIndex]}
             </p>

@@ -40,6 +40,7 @@ const AuditPage = lazy(() => import("./pages/admin/AuditPage"));
 const PendingApprovalsPage = lazy(() => import("./pages/admin/PendingApprovalsPage"));
 const ReferralDetail = lazy(() => import("./pages/ReferralDetail"));
 const PatientReferralHistory = lazy(() => import("./pages/PatientReferralHistory"));
+const PatientJourneyView = lazy(() => import("./pages/PatientJourneyView"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -84,6 +85,7 @@ const App = () => {
                     <Route path="referrals" element={<MyReferrals />} />
                     <Route path="referrals/:id" element={<ReferralDetail portal="clinic" />} />
                     <Route path="patients/:patientId" element={<PatientReferralHistory portal="clinic" />} />
+                    <Route path="patients/:patientId/journey" element={<PatientJourneyView portal="clinic" />} />
                     <Route path="messages" element={<ClinicMessages />} />
                     <Route path="staff" element={<RequireRole roles={["clinic_admin", "admin"]}><ClinicStaffManagement /></RequireRole>} />
                     <Route path="reset-password" element={<PortalResetPassword />} />
@@ -97,6 +99,7 @@ const App = () => {
                     <Route path="referrals/new" element={<CreateReferral />} />
                     <Route path="referrals" element={<MyReferrals />} />
                     <Route path="patients/:patientId" element={<PatientReferralHistory portal="hospital" />} />
+                    <Route path="patients/:patientId/journey" element={<PatientJourneyView portal="hospital" />} />
                     <Route path="assigned" element={<AssignedCases />} />
                     <Route path="feedback" element={<FeedbackCenter />} />
                     <Route path="departments" element={<RequireRole roles={["hospital_admin", "admin"]}><Departments /></RequireRole>} />

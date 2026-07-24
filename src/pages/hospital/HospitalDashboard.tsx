@@ -375,6 +375,14 @@ export default function HospitalDashboard() {
               <p className="text-sm text-muted-foreground">Facility:</p>
               <p className="text-lg font-extrabold tracking-tight text-foreground">{hospitalName || "Hospital name not set"}</p>
             </div>
+            {profile?.full_name && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-foreground">User: {profile.full_name}</span>
+                <Badge variant="outline" className="capitalize text-xs font-normal border-primary/40 bg-primary/10 text-primary">
+                  {(profile.role ?? "staff").replace("_", " ")}
+                </Badge>
+              </div>
+            )}
             <p className="text-muted-foreground mt-2 min-h-6 transition-all duration-300">{heroHighlights[highlightIndex]}</p>
             <p className="mt-2 text-xs text-muted-foreground">
               Account ID: <span className="font-mono">{profile?.unique_id ?? "—"}</span>

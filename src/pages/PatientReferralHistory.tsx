@@ -180,10 +180,15 @@ export default function PatientReferralHistory({ portal }: { portal: "clinic" | 
 
   return (
     <div className="max-w-5xl mx-auto space-y-5">
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <Button variant="ghost" size="sm" asChild>
           <Link to={backHref}>
             <ArrowLeft className="h-4 w-4" /> Back
+          </Link>
+        </Button>
+        <Button variant="outlineBrand" size="sm" asChild>
+          <Link to={portal === "clinic" ? `/clinic/patients/${patientId}/journey` : `/hospital/patients/${patientId}/journey`}>
+            <History className="h-4 w-4 mr-1" /> View Patient Journey Timeline
           </Link>
         </Button>
       </div>
