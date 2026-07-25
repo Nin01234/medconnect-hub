@@ -18,7 +18,6 @@ import { sanitizeText } from "@/lib/sanitize";
 import { safeClientError } from "@/lib/safeError";
 import { doctorCreateSchema } from "@/lib/validation";
 import { LabResultsPanel } from "@/components/LabResultsPanel";
-import { ReferralTimeline } from "@/components/ReferralTimeline";
 
 
 
@@ -485,11 +484,6 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
               <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">{ref.hospital_feedback}</p>
             </div>
           )}
-
-          {/* Referral Progress Timeline */}
-          <div className="mb-8 p-5 bg-card border rounded-xl shadow-sm">
-            <ReferralTimeline currentStatus={ref.status} createdAt={ref.created_at} history={hist} />
-          </div>
 
 
           {/* Sections */}

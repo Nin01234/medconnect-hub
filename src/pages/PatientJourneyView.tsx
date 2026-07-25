@@ -5,9 +5,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
-import { ArrowLeft, CheckCircle2, Clock, AlertTriangle, ChevronRight, Activity, Calendar, Building2 } from "lucide-react";
+import { ArrowLeft, ChevronRight, Activity, Calendar, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { safeClientError } from "@/lib/safeError";
+import { ReferralTimeline } from "@/components/ReferralTimeline";
 
 interface PatientRow {
   id: string;
@@ -15,6 +16,15 @@ interface PatientRow {
   age: number | null;
   gender: string | null;
   phone: string | null;
+}
+
+interface ReferralHistoryItem {
+  id: string;
+  from_status: string | null;
+  to_status: string;
+  created_at: string;
+  note: string | null;
+  changed_by?: string | null;
 }
 
 interface JourneyReferral {
@@ -28,6 +38,7 @@ interface JourneyReferral {
   hospital_feedback: string | null;
   departments: { name: string } | null;
   hospitals: { name: string } | null;
+  history?: ReferralHistoryItem[];
 }
 
 export default function PatientJourneyView({ portal }: { portal: "clinic" | "hospital" }) {
@@ -36,8 +47,6 @@ export default function PatientJourneyView({ portal }: { portal: "clinic" | "hos
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [journey, setJourney] = useState<JourneyReferral[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const backHref = portal === "clinic" ? "/clinic/referrals" : "/hospital/inbox";
 
   const loadJourney = useCallback(async () => {
     if (!patientId) return;
@@ -55,8 +64,31 @@ export default function PatientJourneyView({ portal }: { portal: "clinic" | "hos
       if (pErr) throw pErr;
       if (rErr) throw rErr;
 
+      const referralsList = (rData ?? []) as unknown as JourneyReferral[];
+
+      // Fetch referral history for each referral to populate timeline
+      if (referralsList.length > 0) {
+        const refIds = referralsList.map((r) => r.id);
+        const { data: hData } = await supabase
+          .from("referral_status_history")
+          .select("id, referral_id, from_status, to_status, created_at, note, changed_by")
+          .in("referral_id", refIds)
+          .order("created_at", { ascending: true });
+
+        const historyMap: Record<string, ReferralHistoryItem[]> = {};
+        (hData ?? []).forEach((h) => {
+          const refId = (h as any).referral_id;
+          if (!historyMap[refId]) historyMap[refId] = [];
+          historyMap[refId].push(h);
+        });
+
+        referralsList.forEach((r) => {
+          r.history = historyMap[r.id] || [];
+        });
+      }
+
       setPatient(pData as PatientRow | null);
-      setJourney((rData ?? []) as unknown as JourneyReferral[]);
+      setJourney(referralsList);
     } catch (err) {
       toast.error(safeClientError(err));
     } finally {
@@ -67,19 +99,6 @@ export default function PatientJourneyView({ portal }: { portal: "clinic" | "hos
   useEffect(() => {
     void loadJourney();
   }, [loadJourney]);
-
-  const getTimelineColor = (status: string, created_at: string) => {
-    if (status === "completed") return "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300";
-    if (status === "rejected") return "border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-300";
-
-    // Check SLA SLA threshold (overdue if > 48h and pending)
-    const hours = (Date.now() - new Date(created_at).getTime()) / (1000 * 3600);
-    if (hours > 48 && !["completed", "rejected"].includes(status)) {
-      return "border-rose-600 bg-rose-600/15 text-rose-600 dark:text-rose-400";
-    }
-
-    return "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-300";
-  };
 
   if (loading) {
     return <div className="p-12 text-center text-muted-foreground">Loading Patient Journey…</div>;
@@ -96,7 +115,7 @@ export default function PatientJourneyView({ portal }: { portal: "clinic" | "hos
         </Badge>
       </div>
 
-      <div className="rounded-2xl border bg-gradient-to-r from-primary/10 via-card to-cyan-500/10 p-6 shadow-card">
+      <div className="rounded-2xl border bg-gradient-to-r from-primary/10 via-card to-emerald-500/10 p-6 shadow-card">
         <div className="flex items-center gap-3">
           <div className="h-12 w-12 rounded-xl bg-primary/20 flex items-center justify-center text-primary font-bold text-xl">
             {patient?.full_name?.charAt(0) ?? "P"}
@@ -111,71 +130,65 @@ export default function PatientJourneyView({ portal }: { portal: "clinic" | "hos
       </div>
 
       <Card className="shadow-card">
-        <CardContent className="p-6">
-          <h2 className="font-display text-lg font-semibold mb-6 flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary" /> Chronological Patient Care Journey
+        <CardContent className="p-6 space-y-8">
+          <h2 className="font-display text-lg font-semibold flex items-center gap-2 border-b pb-4">
+            <Activity className="h-5 w-5 text-primary" /> Chronological Patient Care Journey & Timelines
           </h2>
 
           {journey.length === 0 ? (
             <p className="text-center text-muted-foreground py-10">No referrals found for this patient.</p>
           ) : (
-            <div className="relative border-l-2 border-border ml-4 space-y-8 pl-6">
-              {journey.map((item, idx) => {
-                const colorClass = getTimelineColor(item.status, item.created_at);
-                const isOverdue = colorClass.includes("rose-600");
-
+            <div className="space-y-8">
+              {journey.map((item) => {
                 return (
-                  <div key={item.id} className="relative group">
-                    {/* Timeline Node Icon */}
-                    <div
-                      className={`absolute -left-[35px] top-1.5 h-6 w-6 rounded-full border-2 flex items-center justify-center bg-background ${colorClass}`}
-                    >
-                      {item.status === "completed" ? (
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                      ) : isOverdue ? (
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                      ) : (
-                        <Clock className="h-3.5 w-3.5" />
-                      )}
-                    </div>
-
-                    <div className="rounded-xl border bg-card p-5 shadow-sm hover:shadow-elevated transition-shadow">
-                      <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3 mb-3">
+                  <Card key={item.id} className="border border-border shadow-sm overflow-hidden">
+                    <CardContent className="p-6 space-y-5">
+                      {/* Referral Item Header */}
+                      <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-xs text-muted-foreground font-semibold">
                               {item.referral_number ?? item.unique_id}
                             </span>
                             <UrgencyBadge level={item.urgency_level} />
-                            {isOverdue && (
-                              <Badge className="bg-rose-500/20 text-rose-600 dark:text-rose-300 border-rose-500/40 text-[10px]">
-                                SLA Overdue (&gt;48h)
-                              </Badge>
-                            )}
                           </div>
                           <h3 className="font-semibold text-lg mt-1">{item.diagnosis ?? "Diagnosis not detailed"}</h3>
                         </div>
                         <StatusBadge status={item.status} />
                       </div>
 
+                      {/* Referral Department & Date Info */}
                       <div className="grid sm:grid-cols-2 gap-3 text-sm text-muted-foreground">
                         <div className="flex items-center gap-2">
                           <Building2 className="h-4 w-4 text-primary" />
-                          <span>Department: <strong className="text-foreground">{item.departments?.name ?? "General Triage"}</strong></span>
+                          <span>
+                            Department: <strong className="text-foreground">{item.departments?.name ?? "General Triage"}</strong>
+                          </span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Calendar className="h-4 w-4 text-primary" />
-                          <span>Date: <strong className="text-foreground">{new Date(item.created_at).toLocaleString()}</strong></span>
+                          <span>
+                            Created Date: <strong className="text-foreground">{new Date(item.created_at).toLocaleString()}</strong>
+                          </span>
                         </div>
                       </div>
 
                       {item.hospital_feedback && (
-                        <div className="mt-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-xs text-emerald-800 dark:text-emerald-200">
+                        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-xs text-emerald-800 dark:text-emerald-200">
                           <strong>Outcome Feedback:</strong> {item.hospital_feedback}
                         </div>
                       )}
 
-                      <div className="mt-4 flex justify-end">
+                      {/* Integrated Referral Progress Timeline */}
+                      <div className="pt-2">
+                        <ReferralTimeline
+                          currentStatus={item.status}
+                          createdAt={item.created_at}
+                          history={item.history ?? []}
+                        />
+                      </div>
+
+                      <div className="pt-2 flex justify-end">
                         <Button
                           size="sm"
                           variant="ghost"
@@ -183,11 +196,11 @@ export default function PatientJourneyView({ portal }: { portal: "clinic" | "hos
                             nav(portal === "clinic" ? `/clinic/referrals/${item.id}` : `/hospital/referrals/${item.id}/review`)
                           }
                         >
-                          View Details <ChevronRight className="h-4 w-4 ml-1" />
+                          View Full Record <ChevronRight className="h-4 w-4 ml-1" />
                         </Button>
                       </div>
-                    </div>
-                  </div>
+                    </CardContent>
+                  </Card>
                 );
               })}
             </div>
