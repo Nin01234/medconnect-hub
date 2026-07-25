@@ -1,7 +1,7 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, FilePlus2, ListChecks, MessageSquare, LogOut, Stethoscope, Menu, PanelLeft, PanelLeftClose, KeyRound, Users } from "lucide-react";
+import { LayoutDashboard, FilePlus2, ListChecks, MessageSquare, LogOut, Stethoscope, Menu, PanelLeft, PanelLeftClose, KeyRound, Users, Bookmark } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -34,7 +34,10 @@ export default function ClinicLayout() {
     { to: "/clinic/referrals/new", label: "Create Referral", icon: FilePlus2, end: true },
     { to: "/clinic/referrals", label: "My Referrals", icon: ListChecks, end: true },
     { to: "/clinic/messages", label: "Messages & feedback", icon: MessageSquare },
-    ...(canManageStaff ? [{ to: "/clinic/staff", label: "Staff Management", icon: Users, end: true }] : []),
+    ...(canManageStaff ? [
+      { to: "/clinic/staff", label: "Staff Management", icon: Users, end: true },
+      { to: "/clinic/templates", label: "Referral Templates", icon: Bookmark, end: true },
+    ] : []),
     { to: "/clinic/reset-password", label: "Reset password", icon: KeyRound },
   ];
 
@@ -69,6 +72,9 @@ export default function ClinicLayout() {
               <div>
                 <p className="font-display text-lg font-semibold leading-none">{BRAND.appShort}</p>
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Department Portal</p>
+                {profile?.hospitals?.name && (
+                  <p className="text-[10px] text-muted-foreground/70 leading-none mt-0.5 truncate max-w-[160px]">{profile.hospitals.name}</p>
+                )}
               </div>
             </Link>
           </div>

@@ -136,101 +136,14 @@ export default function HospitalDashboard() {
       });
       const { data, error } = await query.order("created_at", { ascending: false }).limit(100);
       if (error) {
-        // #region agent log (debug-mode)
-        fetch("http://127.0.0.1:7930/ingest/ffa8cccd-d5ba-44b3-8be7-88ecdf51e175", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "11eafa" },
-          body: JSON.stringify({
-            sessionId: "11eafa",
-            runId: "pre-fix",
-            hypothesisId: "H1",
-            location: "src/pages/hospital/HospitalDashboard.tsx:queryFn",
-            message: "HospitalDashboard referrals query error",
-            data: {
-              hasHospitalId: !!hospitalId,
-              canTriageHospitalQueue,
-              hasStaffDepartmentId: !!staffDepartmentId,
-              listScope,
-              supabaseErrorCode: (error as { code?: unknown })?.code ?? null,
-              supabaseErrorMessage: (error as { message?: unknown })?.message ?? null,
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        // #endregion agent log (debug-mode)
         throw error;
       }
-      // #region agent log (debug-mode)
-      fetch("http://127.0.0.1:7930/ingest/ffa8cccd-d5ba-44b3-8be7-88ecdf51e175", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "11eafa" },
-        body: JSON.stringify({
-          sessionId: "11eafa",
-          runId: "pre-fix",
-          hypothesisId: "H2",
-          location: "src/pages/hospital/HospitalDashboard.tsx:queryFn",
-          message: "HospitalDashboard referrals query ok",
-          data: {
-            hasHospitalId: !!hospitalId,
-            canTriageHospitalQueue,
-            hasStaffDepartmentId: !!staffDepartmentId,
-            listScope,
-            rowCount: Array.isArray(data) ? data.length : null,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion agent log (debug-mode)
       return (data ?? []) as unknown as Row[];
-    },
-    onSuccess: (data) => {
-      if (!debugEnabled) return;
-      setAgentDebug({
-        page: "HospitalDashboard",
-        hasHospitalId: !!hospitalId,
-        canTriageHospitalQueue,
-        hasStaffDepartmentId: !!staffDepartmentId,
-        listScope,
-        rowCount: Array.isArray(data) ? data.length : null,
-      });
-    },
-    onError: (err) => {
-      if (!debugEnabled) return;
-      const e = err as { code?: unknown; message?: unknown };
-      setAgentDebug({
-        page: "HospitalDashboard",
-        hasHospitalId: !!hospitalId,
-        canTriageHospitalQueue,
-        hasStaffDepartmentId: !!staffDepartmentId,
-        listScope,
-        supabaseErrorCode: e?.code ?? null,
-        supabaseErrorMessage: e?.message ?? null,
-      });
     },
   });
 
   useEffect(() => {
     if (!hospitalId) return;
-    // #region agent log (debug-mode)
-    fetch("http://127.0.0.1:7930/ingest/ffa8cccd-d5ba-44b3-8be7-88ecdf51e175", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "11eafa" },
-      body: JSON.stringify({
-        sessionId: "11eafa",
-        runId: "pre-fix",
-        hypothesisId: "H0",
-        location: "src/pages/hospital/HospitalDashboard.tsx:useEffect",
-        message: "HospitalDashboard effect mounted",
-        data: {
-          hasHospitalId: !!hospitalId,
-          canTriageHospitalQueue,
-          hasStaffDepartmentId: !!staffDepartmentId,
-          listScope,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion agent log (debug-mode)
 
     const dashKey = referralKeys.hospitalDashboard(hospitalId, listScope);
     const filter = `hospital_id=eq.${hospitalId}`;

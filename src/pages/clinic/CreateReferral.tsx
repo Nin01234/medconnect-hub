@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,13 +11,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Upload, X, Sparkles, AlertTriangle, FileCheck, Bookmark } from "lucide-react";
+import { Upload, X, Sparkles, AlertTriangle, Bookmark, FlaskConical, ChevronDown, ChevronUp } from "lucide-react";
 import { createReferralSchema } from "@/lib/validation";
 import { sanitizeFileName, sanitizeText } from "@/lib/sanitize";
 import { safeClientError } from "@/lib/safeError";
 import { getDepartmentRecommendations, Recommendation } from "@/lib/recommendationEngine";
-import { getReferralTemplates, saveUserTemplate, TemplateItem } from "@/lib/referralTemplates";
-import { Badge } from "@/components/ui/badge";
+import { fetchTemplatesFromDb, type TemplateItem } from "@/lib/referralTemplates";
+import { LabResultsPanel } from "@/components/LabResultsPanel";
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = new Set([
@@ -36,6 +37,9 @@ export default function CreateReferral() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [labExpanded, setLabExpanded] = useState(false);
+  const [createdPatientId, setCreatedPatientId] = useState<string | null>(null);
+  const [attachedLabIds, setAttachedLabIds] = useState<string[]>([]);
   const runGuarded = useSubmitGuard();
   const [form, setForm] = useState({
     patient_name: "", patient_age: "", patient_gender: "" as "" | "male" | "female" | "other", patient_phone: "",
@@ -53,8 +57,8 @@ export default function CreateReferral() {
     department_name?: string;
   } | null>(null);
   const [bypassDuplicate, setBypassDuplicate] = useState(false);
-  const [templates] = useState<TemplateItem[]>(getReferralTemplates());
 
+  // Load departments
   useEffect(() => {
     if (profile?.hospital_id) {
       supabase
@@ -67,16 +71,23 @@ export default function CreateReferral() {
     }
   }, [profile?.hospital_id]);
 
+  // Load templates from DB
+  const { data: templates = [] } = useQuery({
+    queryKey: ["referral_templates", profile?.department_id],
+    queryFn: () => fetchTemplatesFromDb(profile?.department_id),
+    staleTime: 5 * 60_000,
+  });
+
   const update = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
-  // Smart Department Recommendation Effect
+  // Smart Department Recommendation
   useEffect(() => {
     const combined = `${form.diagnosis} ${form.symptoms} ${form.referral_reason}`;
     const recs = getDepartmentRecommendations(combined, departments);
     setRecommendations(recs);
   }, [form.diagnosis, form.symptoms, form.referral_reason, departments]);
 
-  // Duplicate Referral Detection Effect
+  // Duplicate Referral Detection
   useEffect(() => {
     if (!form.patient_name.trim() || form.patient_name.trim().length < 3) {
       setPossibleDuplicate(null);
@@ -152,8 +163,6 @@ export default function CreateReferral() {
       const gender: "male" | "female" | "other" | null =
         v.patient_gender === "" ? null : v.patient_gender;
 
-      // Department-linked users (clinic_admin/clinic_staff with department_id, no clinic_id)
-      // must use the department-scoped patient RPC. Clinic-linked users use the clinic RPC.
       const isDepartmentLinked = !profile.clinic_id && !!profile.department_id;
 
       let patientId: string | null = null;
@@ -186,7 +195,6 @@ export default function CreateReferral() {
           .from("referrals")
           .select("id", { count: "exact", head: true })
           .eq("patient_id", pid);
-        // Scope the prior-referral count to the user's org
         if (isDepartmentLinked) {
           countQuery.eq("source_department_id", profile.department_id);
         } else {
@@ -197,7 +205,6 @@ export default function CreateReferral() {
           priorReferralCount = count;
         }
       }
-
 
       const { data: ref, error } = await supabase
         .from("referrals")
@@ -269,6 +276,24 @@ export default function CreateReferral() {
     } finally { setBusy(false); }
     });
   };
+
+  // Resolve patient ID from name for lab panel (debounced)
+  useEffect(() => {
+    if (!form.patient_name.trim() || form.patient_name.trim().length < 3) {
+      setCreatedPatientId(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from("patients")
+        .select("id")
+        .ilike("full_name", `%${form.patient_name.trim()}%`)
+        .limit(1)
+        .maybeSingle();
+      setCreatedPatientId(data?.id ?? null);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [form.patient_name]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -346,6 +371,37 @@ export default function CreateReferral() {
             <Field label="Phone"><Input value={form.patient_phone} onChange={e => update("patient_phone", e.target.value)} /></Field>
           </div>
         </Section>
+
+        {/* Laboratory Results Panel */}
+        <Card className="shadow-card">
+          <CardContent className="p-6">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between"
+              onClick={() => setLabExpanded((v) => !v)}
+            >
+              <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                <FlaskConical className="h-5 w-5 text-primary" />
+                Laboratory Results
+                {attachedLabIds.length > 0 && (
+                  <span className="ml-2 text-xs bg-primary/15 text-primary border border-primary/30 rounded-full px-2 py-0.5">
+                    {attachedLabIds.length} attached
+                  </span>
+                )}
+              </h2>
+              {labExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </button>
+            {labExpanded && (
+              <div className="mt-4">
+                <LabResultsPanel
+                  patientId={createdPatientId}
+                  allowAttach={false}
+                  onAttached={(ids) => setAttachedLabIds(ids)}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Section title="Clinical Information">
           <Field label="Diagnosis *"><Textarea required rows={2} value={form.diagnosis} onChange={e => update("diagnosis", e.target.value)} /></Field>

@@ -12,11 +12,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { ArrowLeft, Printer, Download, Paperclip, Clock, History } from "lucide-react";
+import { ArrowLeft, Printer, Download, Paperclip, Clock, History, FlaskConical } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { sanitizeText } from "@/lib/sanitize";
 import { safeClientError } from "@/lib/safeError";
 import { doctorCreateSchema } from "@/lib/validation";
+import { LabResultsPanel } from "@/components/LabResultsPanel";
+
 
 interface Referral {
   id: string; unique_id: string | null; referral_number: string | null; patient_id: string | null; patient_name: string; patient_age: number | null; patient_gender: string | null;
@@ -529,6 +531,21 @@ export default function ReferralDetail({ portal }: { portal: "clinic" | "hospita
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {/* Laboratory Results */}
+          {ref.patient_id && (
+            <div className="mt-6">
+              <h3 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
+                <FlaskConical className="h-5 w-5 text-primary" />
+                Laboratory Results
+              </h3>
+              <LabResultsPanel
+                patientId={ref.patient_id}
+                referralId={ref.id}
+                allowAttach={true}
+              />
             </div>
           )}
 

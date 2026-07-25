@@ -23,6 +23,7 @@ const CreateReferral = lazy(() => import("./pages/clinic/CreateReferral"));
 const MyReferrals = lazy(() => import("./pages/clinic/MyReferrals"));
 const ClinicMessages = lazy(() => import("./pages/clinic/ClinicMessages"));
 const ClinicStaffManagement = lazy(() => import("./pages/clinic/ClinicStaffManagement"));
+const TemplateManagement = lazy(() => import("./pages/clinic/TemplateManagement"));
 const HospitalDashboard = lazy(() => import("./pages/hospital/HospitalDashboard"));
 const HospitalInbox = lazy(() => import("./pages/hospital/HospitalInbox"));
 const AssignedCases = lazy(() => import("./pages/hospital/AssignedCases"));
@@ -88,6 +89,7 @@ const App = () => {
                     <Route path="patients/:patientId/journey" element={<PatientJourneyView portal="clinic" />} />
                     <Route path="messages" element={<ClinicMessages />} />
                     <Route path="staff" element={<RequireRole roles={["clinic_admin", "admin"]}><ClinicStaffManagement /></RequireRole>} />
+                    <Route path="templates" element={<RequireRole roles={["clinic_admin", "admin"]}><TemplateManagement /></RequireRole>} />
                     <Route path="reset-password" element={<PortalResetPassword />} />
                   </Route>
 

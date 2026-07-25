@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { StatusBadge, UrgencyBadge } from "@/components/StatusBadge";
-import { ArrowLeft, History, CheckCircle2, Clock, AlertTriangle, ChevronRight, Activity, Calendar, Stethoscope, Building2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, AlertTriangle, ChevronRight, Activity, Calendar, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { safeClientError } from "@/lib/safeError";
 

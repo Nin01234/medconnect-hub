@@ -62,7 +62,7 @@ function AnimatedCount({ value }: { value: number }) {
 }
 
 export default function ClinicDashboard() {
-  const { profile } = useAuth();
+  const { profile, roles } = useAuth();
   const queryClient = useQueryClient();
   const clinicId = profile?.clinic_id ?? null;
   const departmentId = profile?.department_id ?? null;
@@ -70,6 +70,7 @@ export default function ClinicDashboard() {
   const isDeptLinked = !clinicId && !!departmentId;
   const scopeId = isDeptLinked ? departmentId : clinicId;
   const fallbackClinicName = profile?.clinics?.name?.trim() ?? profile?.departments?.name?.trim() ?? "";
+  const hospitalName = profile?.hospitals?.name?.trim() ?? "";
 
   const { data: displayName = fallbackClinicName } = useQuery({
     queryKey: scopeId ? ["dept-or-clinic", "name", scopeId] : ["dept-or-clinic", "name", "inactive"],
@@ -189,12 +190,19 @@ export default function ClinicDashboard() {
               <Sparkles className="h-3.5 w-3.5 text-primary" />
               Live dashboard
             </div>
-            <h1 className="mt-3 font-display text-3xl font-bold tracking-tight">Clinic Overview</h1>
+            <h1 className="mt-3 font-display text-3xl font-bold tracking-tight">Department Overview</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Building2 className="h-4 w-4 text-primary" />
-              <p className="text-sm text-muted-foreground">Facility:</p>
-              <p className="text-lg font-extrabold tracking-tight text-foreground">{displayName || (isDeptLinked ? "Department name not set" : "Clinic name not set")}</p>
+              <p className="text-sm text-muted-foreground">Department:</p>
+              <p className="text-lg font-extrabold tracking-tight text-foreground">{displayName || (isDeptLinked ? "No department name set" : "No clinic name set")}</p>
             </div>
+            {hospitalName && (
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">Hospital:</p>
+                <p className="text-sm font-semibold text-foreground">{hospitalName}</p>
+              </div>
+            )}
             {profile?.full_name && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold text-foreground">User: {profile.full_name}</span>
