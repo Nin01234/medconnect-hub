@@ -54,7 +54,9 @@ export const authSignUpSchema = z.object({
 });
 
 export const createReferralSchema = z.object({
-  patient_name: z.string().trim().min(1).max(LIMITS.name),
+  patient_mrn: z.string().trim().min(1, "Patient ID / MRN is required").max(100),
+  patient_name: z.string().trim().min(1, "Full Name is required").max(LIMITS.name),
+  date_of_birth: z.string().trim().optional().or(z.literal("")),
   patient_age: z.preprocess((v) => {
     if (v === "" || v === undefined || v === null) return undefined;
     const n = Number(v);
@@ -62,16 +64,27 @@ export const createReferralSchema = z.object({
   }, z.number().int().min(0).max(150).optional()),
   patient_gender: z.union([genderEnum, z.literal("")]).optional(),
   patient_phone: z.string().trim().max(LIMITS.phone).optional().or(z.literal("")),
-  diagnosis: z.string().trim().min(1).max(LIMITS.longText),
+  allergies: z.array(z.string()).optional(),
+  current_medications: z.array(z.string()).optional(),
+  chief_complaint: z.string().trim().max(LIMITS.longText).optional().or(z.literal("")),
+  hpi: z.string().trim().max(LIMITS.longText).optional().or(z.literal("")),
+  provisional_diagnosis: z.string().trim().max(LIMITS.longText).optional().or(z.literal("")),
+  diagnosis: z.string().trim().min(1, "Diagnosis is required").max(LIMITS.longText),
   symptoms: z.string().trim().max(LIMITS.longText).optional().or(z.literal("")),
-  vitals_bp: z.string().trim().max(50).optional().or(z.literal("")),
+  vitals_bp: z.string().trim().max(50).refine((val) => !val || /^\d{2,3}\/\d{2,3}$/.test(val), {
+    message: "Blood pressure format must be like 120/80",
+  }).optional().or(z.literal("")),
   vitals_hr: z.string().trim().max(50).optional().or(z.literal("")),
   vitals_temp: z.string().trim().max(50).optional().or(z.literal("")),
   vitals_rr: z.string().trim().max(50).optional().or(z.literal("")),
   vitals_spo2: z.string().trim().max(50).optional().or(z.literal("")),
+  referral_category: z.string().trim().min(1, "Referral category is required"),
+  referral_category_other: z.string().trim().max(500).optional().or(z.literal("")),
+  referral_reason: z.string().trim().min(1, "Referral reason is required").max(LIMITS.longText),
   urgency_level: urgencyEnum,
-  referral_reason: z.string().trim().min(1).max(LIMITS.longText),
-  department_id: z.string().uuid(),
+  department_id: z.string().uuid("Target department is required"),
+  assigned_specialist: z.string().trim().max(200).optional().or(z.literal("")),
+  preferred_appointment_date: z.string().trim().optional().or(z.literal("")),
   notes: z.string().trim().max(LIMITS.longText).optional().or(z.literal("")),
 });
 

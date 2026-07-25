@@ -22,58 +22,26 @@ export interface TemplateItem {
 }
 
 /** Built-in read-only global templates shown to all users */
-export const GLOBAL_TEMPLATES: TemplateItem[] = [
-  {
-    id: "tpl-1",
-    title: "Cardiology – Chest Pain Protocol",
-    referral_reason: "Acute onset chest pain, suspected ischemia or coronary pathology.",
-    diagnosis: "Angina Pectoris / Suspected ACS",
-    urgency_level: "high",
-    notes: "Patient administered 300mg Aspirin. ECG attached.",
-    required_documents: "12-Lead ECG, Serial Troponin, Blood Pressure Log",
-    is_global: true,
-  },
-  {
-    id: "tpl-2",
-    title: "Neurology – Stroke / TIA Evaluation",
-    referral_reason: "Transient weakness and numbness in upper extremity, sudden onset speech difficulty.",
-    diagnosis: "Suspected TIA / Acute Stroke",
-    urgency_level: "critical",
-    notes: "NIHSS scale logged at intake. Fast-track imaging required.",
-    required_documents: "CT Brain Report, Blood Glucose, Coagulation Profile",
-    is_global: true,
-  },
-  {
-    id: "tpl-3",
-    title: "Orthopaedics – Closed Fracture Referral",
-    referral_reason: "Severe localised swelling and pain following traumatic fall.",
-    diagnosis: "Suspected Closed Fracture",
-    urgency_level: "medium",
-    notes: "Limb immobilised using posterior splint. Pain managed with analgesics.",
-    required_documents: "X-Ray Views (AP & Lateral), Trauma Workup",
-    is_global: true,
-  },
-];
+export const GLOBAL_TEMPLATES: TemplateItem[] = [];
 
-/** Fetch department templates + global templates from Supabase */
+/** Fetch department templates from Supabase (only department-specific templates created by admin) */
 export async function fetchTemplatesFromDb(
   departmentId: string | null | undefined,
 ): Promise<TemplateItem[]> {
-  if (!departmentId) return GLOBAL_TEMPLATES;
+  if (!departmentId) return [];
 
   const { data, error } = await supabase
     .from("referral_templates")
     .select("*")
+    .eq("department_id", departmentId)
     .order("title");
 
   if (error) {
-    console.warn("[referralTemplates] DB fetch failed, using built-in templates:", error.message);
-    return GLOBAL_TEMPLATES;
+    console.warn("[referralTemplates] DB fetch failed:", error.message);
+    return [];
   }
 
-  const dbTemplates = (data ?? []) as TemplateItem[];
-  // Merge: global built-ins first, then dept-specific DB templates
-  return [...GLOBAL_TEMPLATES, ...dbTemplates];
+  return (data ?? []) as TemplateItem[];
 }
 
 /** Create a new template in Supabase (department admin only) */
