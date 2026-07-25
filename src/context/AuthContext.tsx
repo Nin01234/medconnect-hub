@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import type { AppRole } from "@/context/authRoles";
 
 /** Auto sign-out after this many milliseconds without user activity */
-const INACTIVITY_SIGN_OUT_MS = 5 * 60 * 1000;
+const INACTIVITY_SIGN_OUT_MS = 30 * 60 * 1000; // 30 minutes
+
 /** Max how often we reset the idle timer (keeps mousemove / scroll from resetting hundreds of timers per second) */
 const IDLE_ARM_THROTTLE_MS = 750;
 /** Prevent indefinite loading spinners when auth/profile requests stall. */
@@ -206,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearIdle();
       idleTimer = window.setTimeout(() => {
         idleTimer = null;
-        toast.info("You were signed out after 5 minutes of inactivity.");
+        toast.info("You were signed out after 30 minutes of inactivity.");
         void signOut();
       }, INACTIVITY_SIGN_OUT_MS);
     };

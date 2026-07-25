@@ -14,16 +14,28 @@ const INVISIBLE_AND_BIDI = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g;
 type Payload = { identifier?: string };
 
 function corsForRequest(req: Request): Record<string, string> {
-  const origin = req.headers.get("origin");
+  const origin = req.headers.get("origin") ?? "";
   const allowed = (Deno.env.get("APP_ORIGIN") ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  if (allowed.length === 0) return { ...corsHeaders, "Access-Control-Allow-Origin": "null" };
-  const isAllowed = !!origin && allowed.includes(origin);
+
+  // If no APP_ORIGIN configured, allow all (dev mode)
+  if (allowed.length === 0) {
+    return { ...corsHeaders, "Access-Control-Allow-Origin": origin || "*" };
+  }
+
+  // Always allow localhost for development
+  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  // Allow any vercel.app subdomain (preview deployments)
+  const isVercelPreview = /\.vercel\.app$/.test(origin);
+  // Allow explicitly listed origins
+  const isAllowedExplicit = !!origin && allowed.includes(origin);
+
+  const isAllowed = isLocalhost || isVercelPreview || isAllowedExplicit;
   return {
     ...corsHeaders,
-    "Access-Control-Allow-Origin": isAllowed ? origin : "null",
+    "Access-Control-Allow-Origin": isAllowed ? origin : allowed[0] ?? "null",
     Vary: "Origin",
   };
 }

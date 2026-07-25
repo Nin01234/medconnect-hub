@@ -62,7 +62,7 @@ function AnimatedCount({ value }: { value: number }) {
 }
 
 export default function ClinicDashboard() {
-  const { profile, roles } = useAuth();
+  const { profile } = useAuth();
   const queryClient = useQueryClient();
   const clinicId = profile?.clinic_id ?? null;
   const departmentId = profile?.department_id ?? null;
