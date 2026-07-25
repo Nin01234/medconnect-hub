@@ -16,6 +16,7 @@ import { Link, Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Inbox, Flame, CheckCircle2, XCircle, ClipboardList, Award, Building2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 interface Row {
   id: string;
